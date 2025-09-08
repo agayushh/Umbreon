@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "AI Form Filler",
+  "version": "1.0.0",
+  "description": "Fill forms instantly using AI and your saved dataset.",
+  "icons": {
+    "16": "public/icons/icon16.png",
+    "48": "public/icons/icon48.png",
+    "128": "public/icons/icon128.png"
+  },
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting"
+  ],
+  "action": {
+    "default_popup": "index.html"
+    
+  },
+  "background": {
+    "service_worker": "src/background.ts"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["src/content.ts"]
+    }
+  ],
+  "options_page": "src/Options.html"
+}
