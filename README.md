@@ -1,69 +1,125 @@
-# React + TypeScript + Vite
+# AI Form Filler - Browser Extension
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+An intelligent browser extension that automatically fills any form using AI, with efficient API usage and Chrome storage integration.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+🤖 **AI-Powered Form Filling**: Uses OpenAI's GPT-3.5-turbo to intelligently fill forms
+⚡ **Efficient API Usage**: Caches responses and uses direct field mapping to minimize API calls
+🔒 **Privacy-Focused**: Stores data locally in Chrome storage, no external servers
+📝 **Smart Field Detection**: Automatically detects and maps form fields
+💾 **Profile Management**: Save and manage your personal information
+🎯 **Subjective Question Handling**: AI generates contextual answers for open-ended questions
 
-## Expanding the ESLint configuration
+## Installation
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+1. Clone this repository
+2. Install dependencies:
+   ```bash
+   npm install
+   # or
+   pnpm install
+   ```
 
-```js
-export default tseslint.config([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+3. Build the extension:
+   ```bash
+   npm run build
+   # or
+   pnpm build
+   ```
 
-      // Remove tseslint.configs.recommended and replace with this
-      ...tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      ...tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      ...tseslint.configs.stylisticTypeChecked,
+4. Load the extension in Chrome:
+   - Open Chrome and go to `chrome://extensions/`
+   - Enable "Developer mode"
+   - Click "Load unpacked" and select the `dist` folder
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+## Setup
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+1. **Get OpenAI API Key**:
+   - Visit [OpenAI API](https://platform.openai.com/api-keys)
+   - Create a new API key
+   - Copy the key (starts with `sk-`)
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+2. **Configure the Extension**:
+   - Click the extension icon in your browser toolbar
+   - Click "Set API Key" and enter your OpenAI API key
+   - Click the settings gear icon to open the options page
 
-export default tseslint.config([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+3. **Set Up Your Profile**:
+   - Go to the "Profile Data" tab in settings
+   - Fill in your personal information (name, email, address, etc.)
+   - Add your professional details (skills, experience, education)
+   - Save your profile
+
+## Usage
+
+1. **Navigate to any form** (Google Forms, job applications, registration forms, etc.)
+2. **Click the extension icon** in your browser toolbar
+3. **Click "Fill Form with AI"** - the extension will:
+   - Detect all form fields on the page
+   - Fill basic information from your profile
+   - Use AI to generate answers for subjective questions
+   - Cache responses to save API costs
+
+4. **Review and submit** the filled form
+
+## Cost Optimization
+
+The extension is designed to minimize API costs:
+
+- **Direct Field Mapping**: Common fields (name, email, etc.) are filled directly from your profile
+- **Response Caching**: Similar questions reuse cached AI responses
+- **Efficient Model**: Uses GPT-3.5-turbo instead of more expensive models
+- **Limited Response Length**: AI responses are capped to reduce token usage
+
+## Privacy & Security
+
+- **Local Storage**: All your data is stored locally in Chrome's encrypted storage
+- **No External Servers**: Only communicates with OpenAI's API
+- **Secure API Key**: Your API key is stored securely in Chrome storage
+- **No Data Collection**: The extension doesn't collect or share your data
+
+## Supported Form Types
+
+- Google Forms
+- HTML forms
+- PHP forms
+- Job application forms
+- Registration forms
+- Contact forms
+- Survey forms
+- And many more!
+
+## Troubleshooting
+
+**Extension not working?**
+- Ensure your OpenAI API key is valid and has credits
+- Check that forms are detected on the page
+- Try refreshing the page and clicking the extension again
+
+**AI responses seem off?**
+- Update your profile data in settings
+- Clear the cache to get fresh AI responses
+- Check that your profile information is complete
+
+**High API costs?**
+- The extension caches responses automatically
+- Use the "Clear Cache" option sparingly
+- Ensure your profile data is complete to reduce AI calls
+
+## Development
+
+To contribute or modify the extension:
+
+1. Install dependencies: `pnpm install`
+2. Start development server: `pnpm dev`
+3. Make your changes
+4. Build for production: `pnpm build`
+
+## License
+
+MIT License - feel free to use and modify as needed.
+
+## Support
+
+If you encounter any issues or have suggestions, please open an issue on GitHub.

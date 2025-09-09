@@ -1,27 +1,49 @@
-console.log("Content script loaded");
+import { formFiller } from './formFiller';
 
-document
-  .querySelectorAll<HTMLInputElement>(
-    'input, textarea, select, input[type="text"], input[type="email"], input[type="url"], input[type= "number"]'
-  )
-  .forEach((input) => {
-    if (input.type === "text") input.value = "Sample Text";
-    if (input.type === "email") input.value = "ayush@gmail.com";
-    if (input.type === "url") input.value = "https://example.com";
-    if (input.type === "number") input.value = "12345";
-  });
-document
-  .querySelectorAll<HTMLTextAreaElement>("textarea")
-  .forEach((textarea) => {
-    textarea.value = "Sample textarea content";
-  });
+console.log("AI Form Filler content script loaded");
 
-document.querySelectorAll<HTMLSelectElement>("select").forEach((select) => {
-  if (select.options.length > 0) select.value = select.options[0].value;
+// Listen for messages from popup or background script
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  console.log('Content script received message:', message);
+  
+  if (message.action === 'fillForm') {
+    console.log('Handling fillForm action');
+    formFiller.fillForm().then(result => {
+      console.log('Fill form result:', result);
+      sendResponse(result);
+    }).catch(error => {
+      console.error('Fill form error:', error);
+      sendResponse({ success: false, message: error instanceof Error ? error.message : 'Unknown error' });
+    });
+    return true; // Keep message channel open for async response
+  }
+  
+  if (message.action === 'detectForms') {
+    console.log('Handling detectForms action');
+    formFiller.detectForms().then(result => {
+      console.log('Detect forms result:', result);
+      sendResponse(result);
+    }).catch(error => {
+      console.error('Detect forms error:', error);
+      sendResponse({ count: 0, fields: [] });
+    });
+    return true;
+  }
+
+  if (message.action === 'clearCache') {
+    console.log('Handling clearCache action');
+    formFiller.clearCache();
+    sendResponse({ success: true });
+    return true;
+  }
+  
+  console.log('Unknown action:', message.action);
 });
 
-document
-  .querySelectorAll<HTMLInputElement>('input[type="checkbox"]')
-  .forEach((input) => {
-    input.checked = true;
-  });
+// Initialize form filler when content script loads
+console.log('Initializing form filler...');
+formFiller.initialize().then(() => {
+  console.log('Form filler initialized successfully');
+}).catch(error => {
+  console.error('Failed to initialize form filler:', error);
+});
