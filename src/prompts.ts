@@ -8,11 +8,13 @@ Input Context:
 - Form Fields: {{form_fields}}
 - User Data: {{user_data}}
 - Current Website: {{website_url}}
+- Previously Learned Data (from past form submissions): {{learned_history}}
 
 Tasks:
 1) Analyze fields and map them to the most relevant info from user data.
-2) If a field is subjective, synthesize a concise, professional answer consistent with the user's profile.
-3) Prefer realistic, short values; avoid placeholders like "N/A" unless necessary.
+2) If a field was previously filled by the user (see learned data), prefer using that value unless the user data explicitly provides a different one.
+3) If a field is subjective, synthesize a concise, professional answer consistent with the user's profile.
+4) Prefer realistic, short values; avoid placeholders like "N/A" unless necessary.
 
 Constraints:
 - Keep answers concise.
@@ -23,5 +25,3 @@ Constraints:
 Tone:
 - Friendly, supportive, and helpful.
 `;
-
-

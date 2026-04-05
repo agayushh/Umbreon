@@ -1,49 +1,152 @@
-import { formFiller } from './formFiller';
+import { formFiller } from "./formFiller";
+import { createLogger } from "./logger";
+import { getFieldLabel } from "./fieldDetector";
 
-console.log("AI Form Filler content script loaded");
+const log = createLogger("Content");
 
-// Listen for messages from popup or background script
+log.info("Content script loaded");
+
+// ── Message listener ─────────────────────────────────────────────────
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  console.log('Content script received message:', message);
-  
-  if (message.action === 'fillForm') {
-    console.log('Handling fillForm action');
-    formFiller.fillForm().then(result => {
-      console.log('Fill form result:', result);
-      sendResponse(result);
-    }).catch(error => {
-      console.error('Fill form error:', error);
-      sendResponse({ success: false, message: error instanceof Error ? error.message : 'Unknown error' });
-    });
-    return true; // Keep message channel open for async response
-  }
-  
-  if (message.action === 'detectForms') {
-    console.log('Handling detectForms action');
-    formFiller.detectForms().then(result => {
-      console.log('Detect forms result:', result);
-      sendResponse(result);
-    }).catch(error => {
-      console.error('Detect forms error:', error);
-      sendResponse({ count: 0, fields: [] });
-    });
+  if (message.action === "fillForm") {
+    formFiller
+      .fillForm()
+      .then((result) => {
+        sendResponse(result);
+      })
+      .catch((error) => {
+        log.error("Fill form error", error);
+        sendResponse({
+          success: false,
+          message: error instanceof Error ? error.message : "Unknown error",
+        });
+      });
     return true;
   }
 
-  if (message.action === 'clearCache') {
-    console.log('Handling clearCache action');
+  if (message.action === "detectForms") {
+    formFiller
+      .detectForms()
+      .then((result) => {
+        sendResponse(result);
+      })
+      .catch((error) => {
+        log.error("Detect forms error", error);
+        sendResponse({ count: 0, fields: [] });
+      });
+    return true;
+  }
+
+  if (message.action === "clearCache") {
     formFiller.clearCache();
     sendResponse({ success: true });
     return true;
   }
-  
-  console.log('Unknown action:', message.action);
 });
 
-// Initialize form filler when content script loads
-console.log('Initializing form filler...');
-formFiller.initialize().then(() => {
-  console.log('Form filler initialized successfully');
-}).catch(error => {
-  console.error('Failed to initialize form filler:', error);
-});
+// ── Form submission observer (learning) ──────────────────────────────
+
+function observeFormSubmissions(): void {
+  // Listen for standard form submit events
+  document.addEventListener(
+    "submit",
+    (event) => {
+      const form = event.target as HTMLFormElement;
+      if (!form || form.tagName !== "FORM") return;
+      captureAndSendFormData(form);
+    },
+    true,
+  ); // capture phase to catch before default
+
+  // Also observe click on submit buttons (for SPA / JS-submitted forms)
+  document.addEventListener(
+    "click",
+    (event) => {
+      const target = event.target as HTMLElement;
+      if (!target) return;
+
+      const button = target.closest(
+        'button[type="submit"], input[type="submit"], button:not([type])',
+      );
+      if (!button) return;
+
+      const form = button.closest("form");
+      if (form) {
+        // Small delay to let validations run
+        setTimeout(() => captureAndSendFormData(form), 100);
+      }
+    },
+    true,
+  );
+
+  log.info("Form submission observer active");
+}
+
+function captureAndSendFormData(form: HTMLFormElement): void {
+  try {
+    const domain = window.location.hostname;
+    const fields: Array<{ label: string; value: string }> = [];
+
+    const inputs = form.querySelectorAll("input, textarea, select");
+    inputs.forEach((el) => {
+      const input = el as
+        | HTMLInputElement
+        | HTMLTextAreaElement
+        | HTMLSelectElement;
+
+      // Skip non-value fields
+      if (
+        input.type === "hidden" ||
+        input.type === "password" ||
+        input.type === "file"
+      )
+        return;
+      if (/captcha|csrf|token|nonce/i.test(input.name + input.id)) return;
+
+      const value = input.value?.trim();
+      if (!value) return;
+
+      const label = getFieldLabel(input as HTMLElement);
+      if (!label) return;
+
+      fields.push({ label: label.toLowerCase().trim(), value });
+    });
+
+    // Also check contenteditable elements inside the form
+    const editables = form.querySelectorAll<HTMLElement>(
+      '[contenteditable="true"], [role="textbox"]',
+    );
+    editables.forEach((el) => {
+      const value = el.textContent?.trim();
+      if (!value) return;
+      const label = getFieldLabel(el);
+      if (!label) return;
+      fields.push({ label: label.toLowerCase().trim(), value });
+    });
+
+    if (fields.length > 0) {
+      log.info(
+        `Captured ${fields.length} fields from form submission on ${domain}`,
+      );
+      chrome.runtime.sendMessage({
+        action: "formSubmitted",
+        data: { domain, fields },
+      });
+    }
+  } catch (error) {
+    log.error("Failed to capture form data", error);
+  }
+}
+
+// ── Initialize ───────────────────────────────────────────────────────
+
+formFiller
+  .initialize()
+  .then(() => {
+    log.info("Form filler initialized");
+    observeFormSubmissions();
+  })
+  .catch((error) => {
+    log.error("Failed to initialize form filler", error);
+  });

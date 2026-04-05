@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect } from "react";
 
 interface FormStats {
   count: number;
@@ -18,32 +18,46 @@ interface SuggestedUpdate {
 }
 
 export default function Popup() {
-  const [apiKey, setApiKey] = useState('');
+  const [apiKey, setApiKey] = useState("");
   const [isApiKeySet, setIsApiKeySet] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [message, setMessage] = useState('');
-  const [formStats, setFormStats] = useState<FormStats>({ count: 0, fields: [] });
+  const [message, setMessage] = useState("");
+  const [formStats, setFormStats] = useState<FormStats>({
+    count: 0,
+    fields: [],
+  });
   const [showApiKeyInput, setShowApiKeyInput] = useState(false);
   const [suggested, setSuggested] = useState<SuggestedUpdate[]>([]);
   const [sensitive, setSensitive] = useState<string[]>([]);
-  const [mode, setMode] = useState<'auto'|'conservative'|'off'>('conservative');
+  const [mode, setMode] = useState<"auto" | "conservative" | "off">(
+    "conservative",
+  );
+  const [learnedCount, setLearnedCount] = useState(0);
 
   useEffect(() => {
     const initializePopup = async () => {
       try {
-        // Check if API key is already set
-        const result = await chrome.storage.sync.get(['openaiApiKey']);
+        const result = await chrome.storage.sync.get(["openaiApiKey"]);
         if (result.openaiApiKey) {
           setIsApiKeySet(true);
           setApiKey(result.openaiApiKey);
         }
-        const pref = await chrome.storage.sync.get(['usageMode']);
+        const pref = await chrome.storage.sync.get(["usageMode"]);
         if (pref.usageMode) setMode(pref.usageMode);
 
-        // Detect forms on current page
         await detectForms();
+
+        // Get learned entry count
+        try {
+          const resp = await chrome.runtime.sendMessage({
+            action: "getLearnedCount",
+          });
+          if (resp?.count) setLearnedCount(resp.count);
+        } catch {
+          /* background may not be ready */
+        }
       } catch (error) {
-        console.error('Error initializing popup:', error);
+        console.error("Error initializing popup:", error);
       }
     };
 
@@ -52,63 +66,67 @@ export default function Popup() {
 
   const detectForms = async () => {
     try {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      console.log('Current tab:', tab);
-      
+      const [tab] = await chrome.tabs.query({
+        active: true,
+        currentWindow: true,
+      });
       if (tab.id) {
-        console.log('Sending detectForms message to tab:', tab.id);
-        const response = await chrome.tabs.sendMessage(tab.id, { action: 'detectForms' });
-        console.log('Form detection response:', response);
+        const response = await chrome.tabs.sendMessage(tab.id, {
+          action: "detectForms",
+        });
         setFormStats(response || { count: 0, fields: [] });
       } else {
-        console.log('No active tab found');
         setFormStats({ count: 0, fields: [] });
       }
-    } catch (error) {
-      console.error('Error detecting forms:', error);
+    } catch {
       setFormStats({ count: 0, fields: [] });
     }
   };
 
   const saveApiKey = async () => {
     if (!apiKey.trim()) {
-      setMessage('Please enter a valid API key');
+      setMessage("Please enter a valid API key");
       return;
     }
-
     try {
       await chrome.storage.sync.set({ openaiApiKey: apiKey.trim() });
       setIsApiKeySet(true);
       setShowApiKeyInput(false);
-      setMessage('API key saved successfully!');
-      setTimeout(() => setMessage(''), 3000);
-    } catch (error) {
-      setMessage('Failed to save API key');
-      console.error('Error saving API key:', error);
+      setMessage("API key saved successfully!");
+      setTimeout(() => setMessage(""), 3000);
+    } catch {
+      setMessage("Failed to save API key");
     }
   };
 
   const fillForm = async () => {
     if (!isApiKeySet) {
-      setMessage('Please set your OpenAI API key first');
+      setMessage("Please set your OpenAI API key first");
       return;
     }
-
     setIsLoading(true);
-    setMessage('');
+    setMessage("");
 
     try {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      const [tab] = await chrome.tabs.query({
+        active: true,
+        currentWindow: true,
+      });
       if (tab.id) {
-        const response = await chrome.tabs.sendMessage(tab.id, { action: 'fillForm' });
-        
+        const response = await chrome.tabs.sendMessage(tab.id, {
+          action: "fillForm",
+        });
         if (response.success) {
           setMessage(`✅ ${response.message}`);
           if (response.stats?.errors?.length > 0) {
-            setMessage(prev => prev + ` (${response.stats.errors.length} errors)`);
+            setMessage(
+              (prev) => prev + ` (${response.stats.errors.length} errors)`,
+            );
           }
           if (response.stats?.suggestedProfileUpdates) {
-            setSuggested(response.stats.suggestedProfileUpdates as SuggestedUpdate[]);
+            setSuggested(
+              response.stats.suggestedProfileUpdates as SuggestedUpdate[],
+            );
           } else {
             setSuggested([]);
           }
@@ -116,26 +134,29 @@ export default function Popup() {
           setMessage(`❌ ${response.message}`);
         }
       }
-    } catch (error) {
-      setMessage('❌ Error: Could not communicate with the page');
-      console.error('Error filling form:', error);
+    } catch {
+      setMessage("❌ Error: Could not communicate with the page");
     } finally {
       setIsLoading(false);
-      setTimeout(() => setMessage(''), 5000);
+      setTimeout(() => setMessage(""), 5000);
     }
   };
 
   const saveLearned = async () => {
     if (suggested.length === 0) return;
     const data: Record<string, string> = {};
-    suggested.forEach(s => {
+    suggested.forEach((s) => {
       if (!sensitive.includes(s.key)) data[s.key] = s.value;
     });
-    await chrome.storage.sync.set({ userData: { ...(await chrome.storage.sync.get(['userData'])).userData, ...data } });
-    // Save sensitive preferences
+    await chrome.storage.sync.set({
+      userData: {
+        ...(await chrome.storage.sync.get(["userData"])).userData,
+        ...data,
+      },
+    });
     await chrome.storage.sync.set({ sensitiveKeys: sensitive });
-    setMessage('Saved new profile data');
-    setTimeout(() => setMessage(''), 3000);
+    setMessage("Saved new profile data");
+    setTimeout(() => setMessage(""), 3000);
     setSuggested([]);
   };
 
@@ -143,7 +164,7 @@ export default function Popup() {
     chrome.runtime.openOptionsPage();
   };
 
-  const changeMode = async (newMode: 'auto'|'conservative'|'off') => {
+  const changeMode = async (newMode: "auto" | "conservative" | "off") => {
     setMode(newMode);
     await chrome.storage.sync.set({ usageMode: newMode });
   };
@@ -151,7 +172,9 @@ export default function Popup() {
   return (
     <div className="p-4 w-80 bg-gray-50 min-h-[400px]">
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-lg font-bold text-gray-800">AI Form Filler</h1>
+        <h1 className="text-lg font-bold text-gray-800">
+          FillIt — AI Form Filler
+        </h1>
         <button
           onClick={openOptions}
           className="text-gray-500 hover:text-gray-700 text-sm"
@@ -165,7 +188,9 @@ export default function Popup() {
       <div className="mb-4">
         {!isApiKeySet ? (
           <div className="space-y-2">
-            <p className="text-sm text-gray-600">Set your OpenAI API key to start:</p>
+            <p className="text-sm text-gray-600">
+              Set your OpenAI API key to start:
+            </p>
             {!showApiKeyInput ? (
               <button
                 onClick={() => setShowApiKeyInput(true)}
@@ -192,7 +217,7 @@ export default function Popup() {
                   <button
                     onClick={() => {
                       setShowApiKeyInput(false);
-                      setApiKey('');
+                      setApiKey("");
                     }}
                     className="flex-1 bg-gray-500 text-white p-2 rounded text-sm hover:bg-gray-600"
                   >
@@ -208,8 +233,8 @@ export default function Popup() {
             <button
               onClick={() => {
                 setIsApiKeySet(false);
-                setApiKey('');
-                chrome.storage.sync.remove(['openaiApiKey']);
+                setApiKey("");
+                chrome.storage.sync.remove(["openaiApiKey"]);
               }}
               className="text-xs text-green-600 hover:text-green-800"
             >
@@ -236,11 +261,15 @@ export default function Popup() {
           <span>AI usage:</span>
           <select
             value={mode}
-            onChange={(e) => changeMode(e.target.value as any)}
+            onChange={(e) =>
+              changeMode(e.target.value as "auto" | "conservative" | "off")
+            }
             className="border rounded px-1 py-0.5 text-xs bg-white"
           >
             <option value="auto">Auto (one AI call)</option>
-            <option value="conservative">Conservative (AI only if needed)</option>
+            <option value="conservative">
+              Conservative (AI only if needed)
+            </option>
             <option value="off">Off (dataset only)</option>
           </select>
         </div>
@@ -248,7 +277,10 @@ export default function Popup() {
           <div className="mt-2 text-xs text-blue-600">
             {formStats.fields.slice(0, 3).map((field, index) => (
               <div key={index} className="truncate">
-                {field.label || field.placeholder || field.name || 'Unnamed field'}
+                {field.label ||
+                  field.placeholder ||
+                  field.name ||
+                  "Unnamed field"}
               </div>
             ))}
             {formStats.fields.length > 3 && (
@@ -264,22 +296,24 @@ export default function Popup() {
         disabled={!isApiKeySet || isLoading || formStats.count === 0}
         className={`w-full p-3 rounded font-medium ${
           !isApiKeySet || isLoading || formStats.count === 0
-            ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-            : 'bg-blue-500 text-white hover:bg-blue-600'
+            ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+            : "bg-blue-500 text-white hover:bg-blue-600"
         }`}
       >
-        {isLoading ? 'Filling...' : 'Fill Form with AI'}
+        {isLoading ? "Filling..." : "Fill Form with AI"}
       </button>
 
       {/* Status Message */}
       {message && (
-        <div className={`mt-4 p-2 rounded text-sm ${
-          message.includes('✅') 
-            ? 'bg-green-100 text-green-800' 
-            : message.includes('❌')
-            ? 'bg-red-100 text-red-800'
-            : 'bg-yellow-100 text-yellow-800'
-        }`}>
+        <div
+          className={`mt-4 p-2 rounded text-sm ${
+            message.includes("✅")
+              ? "bg-green-100 text-green-800"
+              : message.includes("❌")
+                ? "bg-red-100 text-red-800"
+                : "bg-yellow-100 text-yellow-800"
+          }`}
+        >
           {message}
         </div>
       )}
@@ -287,10 +321,15 @@ export default function Popup() {
       {/* Suggested profile updates */}
       {suggested.length > 0 && (
         <div className="mt-4 p-3 border rounded bg-white">
-          <div className="text-sm font-medium text-gray-800 mb-2">Save new data to your profile?</div>
+          <div className="text-sm font-medium text-gray-800 mb-2">
+            Save new data to your profile?
+          </div>
           <div className="space-y-2 max-h-40 overflow-auto">
             {suggested.map((s, i) => (
-              <div key={i} className="flex items-center justify-between text-sm">
+              <div
+                key={i}
+                className="flex items-center justify-between text-sm"
+              >
                 <div className="truncate">
                   <span className="font-semibold">{s.key}:</span> {s.value}
                 </div>
@@ -299,27 +338,49 @@ export default function Popup() {
                     type="checkbox"
                     checked={sensitive.includes(s.key)}
                     onChange={(e) => {
-                      setSensitive(prev => e.target.checked ? [...prev, s.key] : prev.filter(k => k !== s.key));
+                      setSensitive((prev) =>
+                        e.target.checked
+                          ? [...prev, s.key]
+                          : prev.filter((k) => k !== s.key),
+                      );
                     }}
                     className="mr-1"
                   />
-                  Sensitive (do not store)
+                  Sensitive
                 </label>
               </div>
             ))}
           </div>
           <div className="flex justify-end mt-2 space-x-2">
-            <button onClick={() => setSuggested([])} className="text-sm px-3 py-1 bg-gray-200 rounded">Dismiss</button>
-            <button onClick={saveLearned} className="text-sm px-3 py-1 bg-blue-600 text-white rounded">Save</button>
+            <button
+              onClick={() => setSuggested([])}
+              className="text-sm px-3 py-1 bg-gray-200 rounded"
+            >
+              Dismiss
+            </button>
+            <button
+              onClick={saveLearned}
+              className="text-sm px-3 py-1 bg-blue-600 text-white rounded"
+            >
+              Save
+            </button>
           </div>
         </div>
       )}
 
       {/* Tips */}
       <div className="mt-4 text-xs text-gray-500 space-y-1">
-        <div>💡 Tip: Set up your profile data in Settings for better results</div>
+        <div>
+          💡 Tip: Set up your profile data in Settings for better results
+        </div>
         <div>🔒 Your API key is stored securely in Chrome storage</div>
         <div>⚡ AI responses are cached to save API costs</div>
+        {learnedCount > 0 && (
+          <div>
+            🧠 FillIt has learned from {learnedCount} form field
+            {learnedCount !== 1 ? "s" : ""}
+          </div>
+        )}
       </div>
     </div>
   );
