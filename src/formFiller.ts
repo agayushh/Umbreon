@@ -1,4 +1,6 @@
-import { aiService } from "./aiService";
+import { localMatcher } from "./localMatcher";
+import { detectFormContext } from "./contextDetector";
+import { detectFormFields } from "./fieldDetector";
 import { createLogger } from "./logger";
 
 const log = createLogger("FormFiller");
@@ -10,13 +12,28 @@ class FormFiller {
     if (this.isInitialized) return;
 
     try {
-      await aiService.initialize();
+      await localMatcher.initialize();
       this.isInitialized = true;
       log.info("Initialized successfully");
     } catch (error) {
       log.error("Initialization failed", error);
       throw error;
     }
+  }
+
+  async precompute(): Promise<{
+    formContext: ReturnType<typeof detectFormContext>;
+    fieldCount: number;
+    modelStatus: string;
+  }> {
+    await this.initialize();
+    const formContext = detectFormContext();
+    const fields = detectFormFields();
+    return {
+      formContext,
+      fieldCount: fields.length,
+      modelStatus: localMatcher.getModelStatus(),
+    };
   }
 
   async fillForm(): Promise<{
@@ -31,18 +48,25 @@ class FormFiller {
         label: string;
         value: string;
       }>;
+      matches?: Array<{
+        value: string;
+        confidence: number;
+        method: string;
+      }>;
+      unfilled?: Array<{ label: string; method: string }>;
     };
   }> {
     try {
       await this.initialize();
 
-      const results = await aiService.fillForm();
+      const fields = detectFormFields();
+      const results = await localMatcher.matchAll(fields);
 
       if (results.filled === 0) {
         if (results.total > 0) {
           return {
             success: true,
-            message: `Detected ${results.total} fields but couldn't auto-fill. Try adding more profile data or retry if rate-limited.`,
+            message: `Detected ${results.total} fields but couldn't auto-fill any. Add more profile data or context entries.`,
             stats: results,
           };
         }
@@ -64,6 +88,50 @@ class FormFiller {
     }
   }
 
+  async fillSingleField(
+    fieldIndex: number,
+    value: string,
+  ): Promise<boolean> {
+    try {
+      await this.initialize();
+      const fields = detectFormFields();
+      if (fieldIndex < 0 || fieldIndex >= fields.length) return false;
+
+      localMatcher.fillElement(fields[fieldIndex], value);
+
+      // Persist as a context entry (local storage via formHistory) so Options
+      // and future fills can reuse it — not buried only in sync userData.
+      const field = fields[fieldIndex];
+      const label =
+        field.label || field.placeholder || field.name || `Field ${fieldIndex}`;
+      const contextEntry = {
+        id: `user_${Date.now()}`,
+        title: label,
+        description: value,
+        category: "other" as const,
+        timestamp: Date.now(),
+      };
+
+      try {
+        await chrome.runtime.sendMessage({
+          action: "saveContextEntry",
+          data: contextEntry,
+        });
+      } catch (err) {
+        log.warn("Could not persist context entry via background", err);
+      }
+
+      const userData = localMatcher.getUserData();
+      const entries = [...(userData.contextEntries || []), contextEntry];
+      localMatcher.setUserData({ ...userData, contextEntries: entries });
+
+      return true;
+    } catch (e) {
+      log.error("fillSingleField error", e);
+      return false;
+    }
+  }
+
   async detectForms(): Promise<{
     count: number;
     fields: Array<{
@@ -77,7 +145,7 @@ class FormFiller {
     try {
       await this.initialize();
 
-      const fields = aiService.detectFormFields();
+      const fields = detectFormFields();
       return {
         count: fields.length,
         fields: fields.map((f) => ({
@@ -96,23 +164,25 @@ class FormFiller {
 
   async updateUserData(data: Record<string, unknown>): Promise<void> {
     await this.initialize();
-    await aiService.updateUserData(data);
-  }
-
-  async setApiKey(apiKey: string): Promise<void> {
-    await aiService.setApiKey(apiKey);
+    localMatcher.setUserData({
+      ...localMatcher.getUserData(),
+      ...data,
+    } as import("./types").UserData);
+    await chrome.storage.sync.set({
+      userData: { ...localMatcher.getUserData(), ...data },
+    });
   }
 
   getUserData() {
-    return aiService.getUserData();
+    return localMatcher.getUserData();
   }
 
-  getCacheStats(): { size: number; keys: string[] } {
-    return aiService.getCacheStats();
+  getModelStatus() {
+    return localMatcher.getModelStatus();
   }
 
-  clearCache() {
-    aiService.clearCache();
+  setSurveyMode(enabled: boolean) {
+    localMatcher.setSurveyMode(enabled);
   }
 }
 

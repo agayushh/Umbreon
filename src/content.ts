@@ -4,51 +4,90 @@ import { getFieldLabel } from "./fieldDetector";
 
 const log = createLogger("Content");
 
-log.info("Content script loaded");
+// Guard against double-registration if the module is evaluated more than once
+// in the same isolated world (e.g. re-injection without a full page reload).
+const g = globalThis as typeof globalThis & {
+  __fillitListenerRegistered?: boolean;
+};
 
 // ── Message listener ─────────────────────────────────────────────────
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message.action === "fillForm") {
-    formFiller
-      .fillForm()
-      .then((result) => {
-        sendResponse(result);
-      })
-      .catch((error) => {
-        log.error("Fill form error", error);
-        sendResponse({
-          success: false,
-          message: error instanceof Error ? error.message : "Unknown error",
+if (!g.__fillitListenerRegistered) {
+  g.__fillitListenerRegistered = true;
+
+  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    // Instant health-check used by the popup before real work
+    if (message.action === "ping") {
+      sendResponse({ ok: true });
+      return false;
+    }
+
+    if (message.action === "fillForm") {
+      formFiller
+        .fillForm()
+        .then((result) => {
+          sendResponse(result);
+        })
+        .catch((error) => {
+          log.error("Fill form error", error);
+          sendResponse({
+            success: false,
+            message: error instanceof Error ? error.message : "Unknown error",
+          });
         });
-      });
-    return true;
-  }
+      return true;
+    }
 
-  if (message.action === "detectForms") {
-    formFiller
-      .detectForms()
-      .then((result) => {
-        sendResponse(result);
-      })
-      .catch((error) => {
-        log.error("Detect forms error", error);
-        sendResponse({ count: 0, fields: [] });
-      });
-    return true;
-  }
+    if (message.action === "detectForms") {
+      formFiller
+        .detectForms()
+        .then((result) => {
+          sendResponse(result);
+        })
+        .catch((error) => {
+          log.error("Detect forms error", error);
+          sendResponse({ count: 0, fields: [] });
+        });
+      return true;
+    }
 
-  if (message.action === "clearCache") {
-    formFiller.clearCache();
-    sendResponse({ success: true });
-    return true;
-  }
-});
+    if (message.action === "fillSingleField") {
+      const { fieldIndex, value } = message.data as {
+        fieldIndex: number;
+        value: string;
+      };
+      formFiller
+        .fillSingleField(fieldIndex, value)
+        .then((success) => {
+          sendResponse({ success });
+        })
+        .catch((error) => {
+          log.error("fillSingleField error", error);
+          sendResponse({ success: false });
+        });
+      return true;
+    }
+
+    if (message.action === "precompute") {
+      formFiller
+        .precompute()
+        .then((result) => {
+          sendResponse(result);
+        })
+        .catch((error) => {
+          log.error("Precompute error", error);
+          sendResponse({ success: false });
+        });
+      return true;
+    }
+  });
+
+  log.debug("Content script message listener ready");
+}
 
 // ── Form submission observer (learning) ──────────────────────────────
 
 function observeFormSubmissions(): void {
-  // Listen for standard form submit events
   document.addEventListener(
     "submit",
     (event) => {
@@ -57,9 +96,8 @@ function observeFormSubmissions(): void {
       captureAndSendFormData(form);
     },
     true,
-  ); // capture phase to catch before default
+  );
 
-  // Also observe click on submit buttons (for SPA / JS-submitted forms)
   document.addEventListener(
     "click",
     (event) => {
@@ -73,14 +111,13 @@ function observeFormSubmissions(): void {
 
       const form = button.closest("form");
       if (form) {
-        // Small delay to let validations run
         setTimeout(() => captureAndSendFormData(form), 100);
       }
     },
     true,
   );
 
-  log.info("Form submission observer active");
+  log.debug("Form submission observer active");
 }
 
 function captureAndSendFormData(form: HTMLFormElement): void {
@@ -95,7 +132,6 @@ function captureAndSendFormData(form: HTMLFormElement): void {
         | HTMLTextAreaElement
         | HTMLSelectElement;
 
-      // Skip non-value fields
       if (
         input.type === "hidden" ||
         input.type === "password" ||
@@ -113,7 +149,6 @@ function captureAndSendFormData(form: HTMLFormElement): void {
       fields.push({ label: label.toLowerCase().trim(), value });
     });
 
-    // Also check contenteditable elements inside the form
     const editables = form.querySelectorAll<HTMLElement>(
       '[contenteditable="true"], [role="textbox"]',
     );
@@ -126,7 +161,7 @@ function captureAndSendFormData(form: HTMLFormElement): void {
     });
 
     if (fields.length > 0) {
-      log.info(
+      log.debug(
         `Captured ${fields.length} fields from form submission on ${domain}`,
       );
       chrome.runtime.sendMessage({
@@ -144,7 +179,7 @@ function captureAndSendFormData(form: HTMLFormElement): void {
 formFiller
   .initialize()
   .then(() => {
-    log.info("Form filler initialized");
+    log.debug("Form filler initialized");
     observeFormSubmissions();
   })
   .catch((error) => {

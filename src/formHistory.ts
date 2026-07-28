@@ -1,11 +1,13 @@
-/** Manages learned form data — observed from user submissions. */
+/** Manages learned form data and context entries — observed from user submissions. */
 
 import { createLogger } from "./logger";
-import type { LearnedEntry, FormHistory, UserData } from "./types";
+import type { LearnedEntry, FormHistory, UserData, ContextEntry } from "./types";
 
 const log = createLogger("FormHistory");
 const STORAGE_KEY = "formHistory";
-const MAX_ENTRIES = 500; // cap to avoid storage bloat
+const CONTEXT_STORAGE_KEY = "contextEntries";
+const MAX_ENTRIES = 500;
+const MAX_CONTEXT_ENTRIES = 100;
 
 class FormHistoryService {
   private history: FormHistory = { entries: [], profileUpdates: {} };
@@ -19,7 +21,7 @@ class FormHistoryService {
         this.history = result[STORAGE_KEY] as FormHistory;
       }
       this.initialized = true;
-      log.info(`Loaded ${this.history.entries.length} learned entries`);
+      log.debug(`Loaded ${this.history.entries.length} learned entries`);
     } catch (err) {
       log.error("Failed to load form history", err);
     }
@@ -69,7 +71,7 @@ class FormHistoryService {
     }
 
     await this.persist();
-    log.info(`Recorded ${fields.length} fields from ${domain}`);
+    log.debug(`Recorded ${fields.length} fields from ${domain}`);
   }
 
   /** Get learned values for a specific domain. */
@@ -156,7 +158,7 @@ class FormHistoryService {
     const userData: UserData = result.userData || {};
     const merged = { ...userData, ...updates };
     await chrome.storage.sync.set({ userData: merged });
-    log.info("Merged learned data into profile", Object.keys(updates));
+    log.debug("Merged learned data into profile", Object.keys(updates));
   }
 
   /** Delete a specific entry. */
@@ -172,13 +174,49 @@ class FormHistoryService {
   async clearHistory(): Promise<void> {
     this.history = { entries: [], profileUpdates: {} };
     await this.persist();
-    log.info("Cleared all form history");
+    log.debug("Cleared all form history");
   }
 
   /** Get total entry count. */
   async getEntryCount(): Promise<number> {
     await this.initialize();
     return this.history.entries.length;
+  }
+
+  // ── Context Entry Management ────────────────────────────────────────
+
+  async getContextEntries(): Promise<ContextEntry[]> {
+    const result = await chrome.storage.local.get([CONTEXT_STORAGE_KEY]);
+    return result[CONTEXT_STORAGE_KEY] || [];
+  }
+
+  async saveContextEntry(entry: ContextEntry): Promise<void> {
+    const entries = await this.getContextEntries();
+    const existingIdx = entries.findIndex((e) => e.id === entry.id);
+    if (existingIdx >= 0) {
+      entries[existingIdx] = entry;
+    } else {
+      entries.push(entry);
+    }
+    // Cap entries
+    if (entries.length > MAX_CONTEXT_ENTRIES) {
+      entries.sort((a, b) => b.timestamp - a.timestamp);
+      entries.length = MAX_CONTEXT_ENTRIES;
+    }
+    await chrome.storage.local.set({ [CONTEXT_STORAGE_KEY]: entries });
+    log.debug(`Saved context entry: ${entry.title}`);
+  }
+
+  async deleteContextEntry(id: string): Promise<void> {
+    const entries = await this.getContextEntries();
+    const filtered = entries.filter((e) => e.id !== id);
+    await chrome.storage.local.set({ [CONTEXT_STORAGE_KEY]: filtered });
+    log.debug(`Deleted context entry: ${id}`);
+  }
+
+  async clearContextEntries(): Promise<void> {
+    await chrome.storage.local.remove([CONTEXT_STORAGE_KEY]);
+    log.debug("Cleared all context entries");
   }
 }
 

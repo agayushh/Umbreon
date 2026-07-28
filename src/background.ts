@@ -6,17 +6,6 @@ const log = createLogger("Background");
 log.info("Background service worker loaded");
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-  // Forward cache-clear to content script
-  if (msg.action === "clearCache") {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs[0]?.id) {
-        chrome.tabs.sendMessage(tabs[0].id, { action: "clearCache" });
-      }
-    });
-    sendResponse({ success: true });
-    return true;
-  }
-
   // Store learned data from form submissions
   if (msg.action === "formSubmitted") {
     const { domain, fields } = msg.data as {
@@ -118,6 +107,64 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       })
       .catch((err) => {
         log.error("Failed to clear history", err);
+        sendResponse({ success: false });
+      });
+    return true;
+  }
+
+  // ── Context Entry Handlers ─────────────────────────────────────────
+
+  // Save a context entry
+  if (msg.action === "saveContextEntry") {
+    formHistoryService
+      .saveContextEntry(msg.data)
+      .then(() => {
+        sendResponse({ success: true });
+      })
+      .catch((err) => {
+        log.error("Failed to save context entry", err);
+        sendResponse({ success: false });
+      });
+    return true;
+  }
+
+  // Get all context entries
+  if (msg.action === "getContextEntries") {
+    formHistoryService
+      .getContextEntries()
+      .then((entries) => {
+        sendResponse({ success: true, data: entries });
+      })
+      .catch((err) => {
+        log.error("Failed to get context entries", err);
+        sendResponse({ success: false, data: [] });
+      });
+    return true;
+  }
+
+  // Delete a context entry
+  if (msg.action === "deleteContextEntry") {
+    formHistoryService
+      .deleteContextEntry(msg.data.id)
+      .then(() => {
+        sendResponse({ success: true });
+      })
+      .catch((err) => {
+        log.error("Failed to delete context entry", err);
+        sendResponse({ success: false });
+      });
+    return true;
+  }
+
+  // Clear all context entries
+  if (msg.action === "clearContextEntries") {
+    formHistoryService
+      .clearContextEntries()
+      .then(() => {
+        sendResponse({ success: true });
+      })
+      .catch((err) => {
+        log.error("Failed to clear context entries", err);
         sendResponse({ success: false });
       });
     return true;

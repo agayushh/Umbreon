@@ -18,15 +18,22 @@ const INPUT_SELECTORS = [
 ];
 
 /** Fields we should never attempt to auto-fill. */
-const SKIP_TYPES = new Set(["password", "hidden", "file"]);
+const SKIP_TYPES = new Set(["password", "hidden", "file", "submit", "button"]);
 const SKIP_NAME_PATTERNS =
   /captcha|recaptcha|g-recaptcha|h-captcha|csrf|token|nonce/i;
+
+/** Track last readyState to avoid duplicate logs. */
+let lastReadyState = "";
 
 /** Detect all fillable form fields on the current page. */
 export function detectFormFields(): FormField[] {
   const fields: FormField[] = [];
+  const seenGroupNames = new Set<string>();
+  const readyState = document.readyState;
+  const wasReady = lastReadyState === readyState;
+  lastReadyState = readyState;
 
-  log.debug("Starting detection, readyState=" + document.readyState);
+  if (!wasReady) log.debug("Starting detection, readyState=" + readyState);
 
   // Standard inputs
   INPUT_SELECTORS.forEach((selector) => {
@@ -39,6 +46,58 @@ export function detectFormFields(): FormField[] {
       if (shouldSkip(input)) return;
 
       fields.push(buildField(input));
+    });
+  });
+
+  // Radio groups — represent each group as one field with a representative element
+  const radioGroups = document.querySelectorAll<HTMLInputElement>(
+    'input[type="radio"]',
+  );
+  const radioGroupMap = new Map<string, HTMLInputElement>();
+  radioGroups.forEach((radio) => {
+    if (shouldSkip(radio)) return;
+    const name = radio.name || `_unnamed_${radioGroupMap.size}`;
+    if (!radioGroupMap.has(name)) {
+      radioGroupMap.set(name, radio);
+    }
+  });
+  radioGroupMap.forEach((radio, name) => {
+    if (seenGroupNames.has(name)) return;
+    seenGroupNames.add(name);
+    fields.push({
+      element: radio,
+      type: "radio",
+      name,
+      id: radio.id || "",
+      placeholder: "",
+      label: getFieldLabel(radio),
+      required: radio.required || false,
+    });
+  });
+
+  // Checkbox groups — represent each group as one field
+  const checkboxGroups = document.querySelectorAll<HTMLInputElement>(
+    'input[type="checkbox"]',
+  );
+  const checkboxGroupMap = new Map<string, HTMLInputElement>();
+  checkboxGroups.forEach((cb) => {
+    if (shouldSkip(cb)) return;
+    const name = cb.name || `_unnamed_cb_${checkboxGroupMap.size}`;
+    if (!checkboxGroupMap.has(name)) {
+      checkboxGroupMap.set(name, cb);
+    }
+  });
+  checkboxGroupMap.forEach((cb, name) => {
+    if (seenGroupNames.has(name)) return;
+    seenGroupNames.add(name);
+    fields.push({
+      element: cb,
+      type: "checkbox",
+      name,
+      id: cb.id || "",
+      placeholder: "",
+      label: getFieldLabel(cb),
+      required: cb.required || false,
     });
   });
 
@@ -61,7 +120,7 @@ export function detectFormFields(): FormField[] {
     });
   });
 
-  log.info(`Detected ${fields.length} fillable fields`);
+  log.debug(`Detected ${fields.length} fillable fields`);
   return fields;
 }
 
@@ -70,9 +129,26 @@ export function detectFormFields(): FormField[] {
 function shouldSkip(el: HTMLElement): boolean {
   const input = el as HTMLInputElement;
   if (input.disabled) return true;
-  if ((input as HTMLInputElement | HTMLTextAreaElement).readOnly) return true;
-  if (SKIP_TYPES.has(input.type)) return true;
-  const identifier = `${input.name} ${input.id} ${input.className}`;
+  // Only treat real form controls as readOnly (contenteditable has no readOnly)
+  if (
+    (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) &&
+    el.readOnly
+  ) {
+    return true;
+  }
+  if (input.type && SKIP_TYPES.has(input.type)) return true;
+  // Skip inputs that are not visible (common for honeypots / closed dialogs)
+  if (el instanceof HTMLElement) {
+    const style = window.getComputedStyle(el);
+    if (
+      style.display === "none" ||
+      style.visibility === "hidden" ||
+      (el as HTMLInputElement).type === "hidden"
+    ) {
+      return true;
+    }
+  }
+  const identifier = `${input.name || ""} ${input.id || ""} ${typeof input.className === "string" ? input.className : ""}`;
   if (SKIP_NAME_PATTERNS.test(identifier)) return true;
   return false;
 }
@@ -92,18 +168,63 @@ function buildField(
   };
 }
 
+/** Prefer human-readable labels; reject pure machine names when better text exists. */
+function isWeakLabel(text: string): boolean {
+  if (!text) return true;
+  // snake_case / camelCase / uuid-like identifiers are weak alone
+  if (/^[a-z0-9]+([._-][a-z0-9]+)+$/i.test(text) && !/\s/.test(text)) {
+    return true;
+  }
+  if (text.length <= 2) return true;
+  return false;
+}
+
 /** Try multiple heuristics to find a human-readable label for a field. */
 export function getFieldLabel(element: HTMLElement): string {
   const strategies: Array<() => string> = [
     // Explicit <label for="...">
     () => {
       if (!element.id) return "";
-      const label = document.querySelector(`label[for="${element.id}"]`);
-      return label?.textContent?.trim() || "";
+      try {
+        const label = document.querySelector(
+          `label[for="${CSS.escape(element.id)}"]`,
+        );
+        return label?.textContent?.trim() || "";
+      } catch {
+        return "";
+      }
+    },
+    // Fieldset legend first for radios/checkboxes (group question, not option text)
+    () => {
+      const input = element as HTMLInputElement;
+      if (input.type === "radio" || input.type === "checkbox") {
+        const legend = element.closest("fieldset")?.querySelector("legend");
+        return legend?.textContent?.trim() || "";
+      }
+      return "";
+    },
+    // Wrapping <label>
+    () => {
+      const wrap = element.closest("label");
+      if (!wrap) return "";
+      // For radio/checkbox, option label text is weak for matching profile keys
+      const input = element as HTMLInputElement;
+      if (input.type === "radio" || input.type === "checkbox") {
+        const legend = element.closest("fieldset")?.querySelector("legend");
+        if (legend) return ""; // already handled above
+      }
+      const clone = wrap.cloneNode(true) as HTMLElement;
+      clone.querySelectorAll("input, select, textarea").forEach((n) => n.remove());
+      return clone.textContent?.trim() || wrap.textContent?.trim() || "";
+    },
+    // Fieldset legend for non-radio fields
+    () => {
+      const legend = element.closest("fieldset")?.querySelector("legend");
+      return legend?.textContent?.trim() || "";
     },
     // Nearby label in closest container
     () => {
-      const parent = element.closest("div, p, td, th");
+      const parent = element.closest("div, p, td, th, li, section");
       const label = parent?.querySelector("label");
       return label?.textContent?.trim() || "";
     },
@@ -117,11 +238,6 @@ export function getFieldLabel(element: HTMLElement): string {
         .filter(Boolean)
         .join(" ");
     },
-    // Fieldset legend
-    () => {
-      const legend = element.closest("fieldset")?.querySelector("legend");
-      return legend?.textContent?.trim() || "";
-    },
     // Previous sibling text
     () => {
       const prev = element.previousElementSibling;
@@ -129,19 +245,23 @@ export function getFieldLabel(element: HTMLElement): string {
     },
     // aria-label
     () => element.getAttribute("aria-label") || "",
-    // placeholder / name / id
+    // placeholder (often human-readable)
     () => (element as HTMLInputElement | HTMLTextAreaElement).placeholder || "",
-    () => (element as HTMLInputElement | HTMLTextAreaElement).name || "",
-    () => element.id || "",
     // Nearby headings (Google Forms / Indeed)
     () => getNearbyPromptText(element),
+    // name / id last (machine identifiers)
+    () => (element as HTMLInputElement | HTMLTextAreaElement).name || "",
+    () => element.id || "",
   ];
 
+  let fallback = "";
   for (const strategy of strategies) {
     const label = strategy();
-    if (label) return label;
+    if (!label) continue;
+    if (!isWeakLabel(label)) return label;
+    if (!fallback) fallback = label;
   }
-  return "";
+  return fallback;
 }
 
 /** Walk nearby DOM to find a visible prompt/heading for a field. */
