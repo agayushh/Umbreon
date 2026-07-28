@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import type { UserData } from "./aiService";
+import type { UserData, ContextEntry } from "./types";
 
 interface LearnedEntry {
   fieldLabel: string;
@@ -14,19 +14,33 @@ export default function Options() {
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [activeTab, setActiveTab] = useState<
-    "profile" | "learning" | "cache" | "settings"
+    "profile" | "context" | "learning" | "settings"
   >("profile");
   const [learnedData, setLearnedData] = useState<
     Record<string, LearnedEntry[]>
   >({});
   const [learnedLoading, setLearnedLoading] = useState(false);
+  const [enableLocalModels, setEnableLocalModels] = useState(false);
+  const [contextEntries, setContextEntries] = useState<ContextEntry[]>([]);
+  const [newContext, setNewContext] = useState({
+    title: "",
+    description: "",
+    category: "project" as ContextEntry["category"],
+    skills: "",
+    impact: "",
+  });
 
   useEffect(() => {
     loadUserData();
+    loadContextEntries();
+    chrome.storage.sync.get(["enableLocalModels"]).then((r) => {
+      setEnableLocalModels(r.enableLocalModels === true);
+    });
   }, []);
 
   useEffect(() => {
     if (activeTab === "learning") loadLearnedData();
+    if (activeTab === "context") loadContextEntries();
   }, [activeTab]);
 
   const loadUserData = async () => {
@@ -75,22 +89,6 @@ export default function Options() {
     }));
   };
 
-  const clearCache = async () => {
-    try {
-      const [tab] = await chrome.tabs.query({
-        active: true,
-        currentWindow: true,
-      });
-      if (tab.id) {
-        await chrome.tabs.sendMessage(tab.id, { action: "clearCache" });
-        setMessage("Cache cleared successfully!");
-        setTimeout(() => setMessage(""), 3000);
-      }
-    } catch {
-      setMessage("Failed to clear cache");
-    }
-  };
-
   const exportData = () => {
     const dataStr = JSON.stringify(userData, null, 2);
     const dataBlob = new Blob([dataStr], { type: "application/json" });
@@ -129,6 +127,69 @@ export default function Options() {
       }
     };
     reader.readAsText(file);
+  };
+
+  // ── Context Entries ────────────────────────────────────────────────
+
+  const loadContextEntries = async () => {
+    try {
+      const resp = await chrome.runtime.sendMessage({
+        action: "getContextEntries",
+      });
+      if (resp?.success) setContextEntries(resp.data || []);
+    } catch {
+      setContextEntries([]);
+    }
+  };
+
+  const addContextEntry = async () => {
+    if (!newContext.title.trim() || !newContext.description.trim()) return;
+
+    const entry: ContextEntry = {
+      id: `ctx_${Date.now()}`,
+      title: newContext.title.trim(),
+      description: newContext.description.trim(),
+      category: newContext.category,
+      skills: newContext.skills
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean),
+      impact: newContext.impact.trim() || undefined,
+      timestamp: Date.now(),
+    };
+
+    try {
+      await chrome.runtime.sendMessage({
+        action: "saveContextEntry",
+        data: entry,
+      });
+      setNewContext({
+        title: "",
+        description: "",
+        category: "project",
+        skills: "",
+        impact: "",
+      });
+      await loadContextEntries();
+      setMessage("Context entry added!");
+      setTimeout(() => setMessage(""), 3000);
+    } catch {
+      setMessage("Failed to save context entry");
+    }
+  };
+
+  const deleteContextEntryHandler = async (id: string) => {
+    try {
+      await chrome.runtime.sendMessage({
+        action: "deleteContextEntry",
+        data: { id },
+      });
+      await loadContextEntries();
+      setMessage("Entry deleted");
+      setTimeout(() => setMessage(""), 2000);
+    } catch {
+      setMessage("Failed to delete entry");
+    }
   };
 
   // ── Learning History helpers ──────────────────────────────────────
@@ -235,8 +296,8 @@ export default function Options() {
             <div className="flex border-b border-gray-200">
               {[
                 { id: "profile", label: "Profile Data", icon: "👤" },
+                { id: "context", label: "Context Entries", icon: "📝" },
                 { id: "learning", label: "Learning History", icon: "🧠" },
-                { id: "cache", label: "Cache & Performance", icon: "⚡" },
                 { id: "settings", label: "Settings", icon: "⚙️" },
               ].map((tab) => (
                 <button
@@ -276,6 +337,41 @@ export default function Options() {
                         className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         placeholder="John Doe"
                       />
+                      <p className="mt-1 text-xs text-gray-400">
+                        Used to auto-split first / last name when those fields
+                        are empty
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          First Name
+                        </label>
+                        <input
+                          type="text"
+                          value={userData.firstName || ""}
+                          onChange={(e) =>
+                            updateField("firstName", e.target.value)
+                          }
+                          className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          placeholder="John"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Last Name
+                        </label>
+                        <input
+                          type="text"
+                          value={userData.lastName || ""}
+                          onChange={(e) =>
+                            updateField("lastName", e.target.value)
+                          }
+                          className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          placeholder="Doe"
+                        />
+                      </div>
                     </div>
 
                     <div>
@@ -410,9 +506,9 @@ export default function Options() {
                         Experience
                       </label>
                       <textarea
-                        value={userData.experience || ""}
+                        value={userData.yearsOfExperience || ""}
                         onChange={(e) =>
-                          updateField("experience", e.target.value)
+                          updateField("yearsOfExperience", e.target.value)
                         }
                         rows={3}
                         className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
@@ -706,23 +802,24 @@ export default function Options() {
               </div>
             )}
 
-            {/* Cache & Performance Tab */}
-            {activeTab === "cache" && (
+            {/* Context Entries Tab */}
+            {activeTab === "context" && (
               <div className="space-y-6">
-                <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
+                <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
                   <div className="flex">
                     <div className="flex-shrink-0">
-                      <span className="text-yellow-400">⚡</span>
+                      <span className="text-blue-400">💡</span>
                     </div>
                     <div className="ml-3">
-                      <h3 className="text-sm font-medium text-yellow-800">
-                        Cache Management
+                      <h3 className="text-sm font-medium text-blue-800">
+                        What are Context Entries?
                       </h3>
-                      <div className="mt-2 text-sm text-yellow-700">
+                      <div className="mt-2 text-sm text-blue-700">
                         <p>
-                          AI responses are cached to reduce API costs and
-                          improve performance. Clear the cache if you want fresh
-                          AI responses for similar questions.
+                          Add your projects, experiences, and achievements.
+                          When forms ask "Describe a project you worked on" or
+                          "Tell us about a leadership experience," FillIt pulls
+                          the most relevant entry and generates a natural answer.
                         </p>
                       </div>
                     </div>
@@ -731,41 +828,174 @@ export default function Options() {
 
                 <div className="bg-white border border-gray-200 rounded-md p-4">
                   <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                    Cache Statistics
+                    Add Context Entry
                   </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-blue-600">0</div>
-                      <div className="text-sm text-gray-600">
-                        Cached Responses
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Title
+                      </label>
+                      <input
+                        type="text"
+                        value={newContext.title}
+                        onChange={(e) =>
+                          setNewContext((prev) => ({
+                            ...prev,
+                            title: e.target.value,
+                          }))
+                        }
+                        className="w-full p-2 border border-gray-300 rounded-md"
+                        placeholder="E-commerce Platform"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Description (2-5 sentences)
+                      </label>
+                      <textarea
+                        value={newContext.description}
+                        onChange={(e) =>
+                          setNewContext((prev) => ({
+                            ...prev,
+                            description: e.target.value,
+                          }))
+                        }
+                        rows={4}
+                        className="w-full p-2 border border-gray-300 rounded-md"
+                        placeholder="Built a full-stack e-commerce platform using React and Node.js. Handled 10k+ daily users..."
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Category
+                        </label>
+                        <select
+                          value={newContext.category}
+                          onChange={(e) =>
+                            setNewContext((prev) => ({
+                              ...prev,
+                              category: e.target
+                                .value as ContextEntry["category"],
+                            }))
+                          }
+                          className="w-full p-2 border border-gray-300 rounded-md"
+                        >
+                          <option value="project">Project</option>
+                          <option value="experience">Experience</option>
+                          <option value="achievement">Achievement</option>
+                          <option value="leadership">Leadership</option>
+                          <option value="education">Education</option>
+                          <option value="certification">Certification</option>
+                          <option value="other">Other</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Impact (optional)
+                        </label>
+                        <input
+                          type="text"
+                          value={newContext.impact}
+                          onChange={(e) =>
+                            setNewContext((prev) => ({
+                              ...prev,
+                              impact: e.target.value,
+                            }))
+                          }
+                          className="w-full p-2 border border-gray-300 rounded-md"
+                          placeholder="Increased revenue by 30%"
+                        />
                       </div>
                     </div>
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-green-600">
-                        $0.00
-                      </div>
-                      <div className="text-sm text-gray-600">
-                        Estimated Savings
-                      </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Skills (comma-separated)
+                      </label>
+                      <input
+                        type="text"
+                        value={newContext.skills}
+                        onChange={(e) =>
+                          setNewContext((prev) => ({
+                            ...prev,
+                            skills: e.target.value,
+                          }))
+                        }
+                        className="w-full p-2 border border-gray-300 rounded-md"
+                        placeholder="React, Node.js, TypeScript"
+                      />
                     </div>
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-purple-600">
-                        0ms
-                      </div>
-                      <div className="text-sm text-gray-600">
-                        Avg Response Time
-                      </div>
-                    </div>
+                    <button
+                      onClick={addContextEntry}
+                      disabled={!newContext.title || !newContext.description}
+                      className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      Add Entry
+                    </button>
                   </div>
                 </div>
 
-                <div className="flex justify-center">
-                  <button
-                    onClick={clearCache}
-                    className="px-6 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700"
-                  >
-                    Clear Cache
-                  </button>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                    Your Context Entries ({contextEntries.length})
+                  </h3>
+                  {contextEntries.length === 0 ? (
+                    <div className="text-center py-8 text-gray-500">
+                      <div className="text-4xl mb-2">📝</div>
+                      <p>No context entries yet. Add some above!</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {contextEntries
+                        .sort((a, b) => b.timestamp - a.timestamp)
+                        .map((entry) => (
+                          <div
+                            key={entry.id}
+                            className="border border-gray-200 rounded-md p-4 hover:bg-gray-50"
+                          >
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1">
+                                <div className="flex items-center space-x-2 mb-1">
+                                  <span className="font-medium text-gray-900">
+                                    {entry.title}
+                                  </span>
+                                  <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                                    {entry.category}
+                                  </span>
+                                </div>
+                                <p className="text-sm text-gray-600">
+                                  {entry.description}
+                                </p>
+                                {entry.impact && (
+                                  <p className="text-sm text-green-600 mt-1">
+                                    Impact: {entry.impact}
+                                  </p>
+                                )}
+                                {entry.skills && entry.skills.length > 0 && (
+                                  <div className="flex flex-wrap gap-1 mt-2">
+                                    {entry.skills.map((skill, i) => (
+                                      <span
+                                        key={i}
+                                        className="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-700"
+                                      >
+                                        {skill}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                              <button
+                                onClick={() => deleteContextEntryHandler(entry.id)}
+                                className="ml-3 text-red-500 hover:text-red-700 text-sm"
+                                title="Delete"
+                              >
+                                🗑️
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -773,19 +1003,22 @@ export default function Options() {
             {/* Settings Tab */}
             {activeTab === "settings" && (
               <div className="space-y-6">
-                <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
+                <div className="bg-green-50 border border-green-200 rounded-md p-4">
                   <div className="flex">
                     <div className="flex-shrink-0">
-                      <span className="text-blue-400">ℹ️</span>
+                      <span className="text-green-400">🔒</span>
                     </div>
                     <div className="ml-3">
-                      <h3 className="text-sm font-medium text-blue-800">
-                        Extension Information
+                      <h3 className="text-sm font-medium text-green-800">
+                        Privacy & Security
                       </h3>
-                      <div className="mt-2 text-sm text-blue-700">
+                      <div className="mt-2 text-sm text-green-700">
                         <p>
-                          FillIt v1.1.0 — Fill any form automatically using AI
-                          with adaptive learning
+                          Your data is stored exclusively in your browser's
+                          local storage. FillIt never uploads, syncs, or
+                          transmits your personal information. We don't have
+                          servers or databases — everything stays on your
+                          device.
                         </p>
                       </div>
                     </div>
@@ -794,89 +1027,117 @@ export default function Options() {
 
                 <div className="space-y-4">
                   <h3 className="text-lg font-semibold text-gray-900">
-                    Privacy & Security
+                    Matching engine
                   </h3>
-
-                  <div className="bg-green-50 border border-green-200 rounded-md p-4">
-                    <h4 className="font-medium text-green-800 mb-2">
-                      🔒 Data Security
-                    </h4>
-                    <ul className="text-sm text-green-700 space-y-1">
-                      <li>
-                        • Your API key is stored securely in Chrome's encrypted
-                        storage
-                      </li>
-                      <li>• Profile data is stored locally in your browser</li>
-                      <li>
-                        • Learning history is stored locally — never sent to
-                        external servers
-                      </li>
-                      <li>
-                        • No data is sent anywhere except OpenAI API for form
-                        filling
-                      </li>
-                      <li>
-                        • AI responses are cached locally to reduce API calls
-                      </li>
-                    </ul>
-                  </div>
-
-                  <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
-                    <h4 className="font-medium text-yellow-800 mb-2">
-                      💰 Cost Optimization
-                    </h4>
-                    <ul className="text-sm text-yellow-700 space-y-1">
-                      <li>• Uses GPT-4o-mini for cost efficiency</li>
-                      <li>• Learned data reduces AI calls over time</li>
-                      <li>
-                        • Caches similar responses to avoid duplicate API calls
-                      </li>
-                      <li>• Limits response length to minimize token usage</li>
-                      <li>
-                        • Direct field mapping reduces AI calls for common
-                        fields
-                      </li>
-                    </ul>
+                  <div className="flex items-start justify-between gap-4 p-4 border border-gray-200 rounded-lg bg-white">
+                    <div>
+                      <div className="text-sm font-medium text-gray-800">
+                        Experimental on-device models
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1 max-w-md">
+                        Off by default. When on, downloads MiniLM (~25MB) and
+                        optionally Flan-T5 from Hugging Face for semantic match
+                        / short generation. Can show WASM warnings in the
+                        extension error page and slow first fill. Recommended:
+                        leave off — synonym + fuzzy matching is enough for most
+                        forms.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={enableLocalModels}
+                      onClick={async () => {
+                        const next = !enableLocalModels;
+                        setEnableLocalModels(next);
+                        await chrome.storage.sync.set({
+                          enableLocalModels: next,
+                        });
+                        setMessage(
+                          next
+                            ? "On-device models enabled (reload form tabs)"
+                            : "On-device models disabled",
+                        );
+                        setTimeout(() => setMessage(""), 3000);
+                      }}
+                      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+                        enableLocalModels ? "bg-blue-600" : "bg-gray-300"
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                          enableLocalModels
+                            ? "translate-x-5"
+                            : "translate-x-0.5"
+                        }`}
+                      />
+                    </button>
                   </div>
                 </div>
 
                 <div className="space-y-4">
                   <h3 className="text-lg font-semibold text-gray-900">
-                    Support
+                    Data Management
                   </h3>
+                  <ul className="text-sm text-gray-600 space-y-2">
+                    <li>• Profile data is stored in Chrome's sync storage</li>
+                    <li>• Learning history is stored locally in your browser</li>
+                    <li>• Context entries are stored locally in your browser</li>
+                    <li>
+                      • Form answers are never uploaded; optional models only
+                      download weights from Hugging Face when enabled
+                    </li>
+                    <li>
+                      • You can export all your data at any time from the
+                      Profile tab
+                    </li>
+                  </ul>
+                </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="bg-gray-50 border border-gray-200 rounded-md p-4">
-                      <h4 className="font-medium text-gray-800 mb-2">
-                        📖 How to Use
-                      </h4>
-                      <ol className="text-sm text-gray-600 space-y-1 list-decimal list-inside">
-                        <li>Set your OpenAI API key in the popup</li>
-                        <li>
-                          Fill out your profile data in this settings page
-                        </li>
-                        <li>
-                          Navigate to any form and click "Fill Form with AI"
-                        </li>
-                        <li>Review, edit if needed, and submit the form</li>
-                        <li>
-                          FillIt learns from your submissions automatically
-                        </li>
-                      </ol>
-                    </div>
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    About FillIt
+                  </h3>
+                  <p className="text-sm text-gray-600">
+                    FillIt matches form fields to your profile with synonym and
+                    fuzzy matching, plus your context entries. No API keys
+                    required. Optional on-device models can be enabled above for
+                    experimental semantic matching — left off by default for
+                    speed and a clean error console.
+                  </p>
+                </div>
 
-                    <div className="bg-gray-50 border border-gray-200 rounded-md p-4">
-                      <h4 className="font-medium text-gray-800 mb-2">
-                        🛠️ Troubleshooting
-                      </h4>
-                      <ul className="text-sm text-gray-600 space-y-1">
-                        <li>• Ensure API key is valid and has credits</li>
-                        <li>• Check that forms are detected on the page</li>
-                        <li>• Clear cache if responses seem outdated</li>
-                        <li>• Check Learning History for incorrect data</li>
-                        <li>• Update profile data for better accuracy</li>
-                      </ul>
-                    </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="bg-gray-50 border border-gray-200 rounded-md p-4">
+                    <h4 className="font-medium text-gray-800 mb-2">
+                      📖 How to Use
+                    </h4>
+                    <ol className="text-sm text-gray-600 space-y-1 list-decimal list-inside">
+                      <li>Fill out your profile data in the Profile tab</li>
+                      <li>
+                        Add context entries (projects, experiences) in the
+                        Context tab
+                      </li>
+                      <li>
+                        Navigate to any form and click "Fill Form" in the popup
+                      </li>
+                      <li>Review, edit if needed, and submit the form</li>
+                      <li>
+                        FillIt learns from your submissions automatically
+                      </li>
+                    </ol>
+                  </div>
+
+                  <div className="bg-gray-50 border border-gray-200 rounded-md p-4">
+                    <h4 className="font-medium text-gray-800 mb-2">
+                      💡 Tips for Best Results
+                    </h4>
+                    <ul className="text-sm text-gray-600 space-y-1">
+                      <li>• Add at least 2-3 context entries for richer answers</li>
+                      <li>• Enable survey mode for random survey answers</li>
+                      <li>• Update profile regularly as you add info</li>
+                      <li>• Use the refresh button if form changes</li>
+                    </ul>
                   </div>
                 </div>
               </div>
