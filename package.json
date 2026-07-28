@@ -7,9 +7,11 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:matcher": "node scripts/test-matcher.mjs"
   },
   "dependencies": {
+    "@xenova/transformers": "^2.17.2",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
   },
@@ -22,14 +24,24 @@
     "@vitejs/plugin-react": "^5.0.0",
     "autoprefixer": "^10.4.21",
     "chrome": "^0.1.0",
+    "esbuild": "^0.28.1",
     "eslint": "^9.33.0",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",
     "globals": "^16.3.0",
+    "jsdom": "^30.0.0",
     "postcss": "^8.5.6",
+    "puppeteer": "^25.4.0",
     "tailwindcss": "3",
     "typescript": "~5.8.3",
     "typescript-eslint": "^8.39.1",
     "vite": "^7.1.2"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "protobufjs",
+      "sharp"
+    ]
   }
 }
