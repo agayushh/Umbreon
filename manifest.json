@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "AI Form Filler",
   "version": "1.0.0",
-  "description": "Fill forms instantly using AI and your saved dataset.",
+  "description": "Fill any form instantly — no API keys needed. All data stays in your browser.",
   "permissions": [
     "storage",
     "activeTab",
@@ -10,7 +10,11 @@
     "tabs"
   ],
   "host_permissions": [
-    "https://api.openai.com/*"
+    "http://*/*",
+    "https://*/*",
+    "https://huggingface.co/*",
+    "https://cdn.jsdelivr.net/*",
+    "https://*.hf.co/*"
   ],
   "action": {
     "default_popup": "index.html"
@@ -20,9 +24,12 @@
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["src/content.ts"]
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["src/content.ts"],
+      "run_at": "document_idle",
+      "all_frames": false
     }
   ],
   "options_page": "options.html"
 }
+

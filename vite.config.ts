@@ -5,13 +5,15 @@ import manifest from "./manifest.json";
 
 // https://vite.dev/config/
 export default defineConfig({
+  // Relative base so dynamic chunk imports resolve under chrome-extension://
+  base: "",
   plugins: [react(), crx({ manifest })],
   build: {
     rollupOptions: {
       input: {
         popup: "index.html",
-        options: "options.html"
-      }
-    }
-  }
+        options: "options.html",
+      },
+    },
+  },
 });
