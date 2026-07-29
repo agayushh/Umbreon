@@ -1,16 +1,46 @@
 /**
  * Resume and LinkedIn Profile Parser Engine for FillIt.
  * Extracts structured profile fields and context memory entries from plain text,
- * raw LinkedIn profile text/exports, and resume text.
+ * raw LinkedIn profile text/exports, and resume text (including PDF files).
  */
 
+import * as pdfjsLib from "pdfjs-dist";
 import type { UserData, ContextEntry } from "./types";
+
+// Configure worker URL for PDF parsing
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
 
 export interface ExtractionResult {
   userData: Partial<UserData>;
   contextEntries: Array<Omit<ContextEntry, "id" | "timestamp">>;
   extractedSkills: string[];
   rawTextPreview: string;
+}
+
+/** Extract plain text from PDF resume file. */
+export async function readPdfFile(file: File): Promise<string> {
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+    const pdf = await loadingTask.promise;
+    let text = "";
+
+    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+      const page = await pdf.getPage(pageNum);
+      const textContent = await page.getTextContent();
+      const pageText = textContent.items
+        .map((item) => ("str" in item ? item.str : ""))
+        .join(" ");
+      text += pageText + "\n";
+    }
+
+    return text.trim();
+  } catch (error) {
+    console.error("[FillIt] PDF reading error:", error);
+    throw new Error(
+      "Failed to read PDF file. Please ensure it is a valid text-based PDF resume.",
+    );
+  }
 }
 
 /** Extract structured profile and context memory from text. */

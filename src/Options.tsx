@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import type { UserData, ContextEntry } from "./types";
-import { parseResumeOrLinkedInText, type ExtractionResult } from "./resumeParser";
+import { parseResumeOrLinkedInText, readPdfFile, type ExtractionResult } from "./resumeParser";
 import {
   User,
   FileText,
@@ -220,19 +220,36 @@ export default function Options() {
     setExtractedResult(result);
   };
 
-  const handleFileUploadForExtraction = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUploadForExtraction = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      const text = evt.target?.result as string;
+
+    try {
+      let text = "";
+      if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
+        setMessage("Reading PDF resume...");
+        text = await readPdfFile(file);
+      } else {
+        const reader = new FileReader();
+        text = await new Promise<string>((resolve, reject) => {
+          reader.onload = (evt) => resolve((evt.target?.result as string) || "");
+          reader.onerror = () => reject(new Error("File read error"));
+          reader.readAsText(file);
+        });
+      }
+
       if (text) {
         setResumeText(text);
         const result = parseResumeOrLinkedInText(text);
         setExtractedResult(result);
+        setMessage("PDF Resume successfully read & parsed!");
+        setTimeout(() => setMessage(""), 3500);
       }
-    };
-    reader.readAsText(file);
+    } catch (err) {
+      console.error("PDF upload error:", err);
+      setMessage(err instanceof Error ? err.message : "Failed to read PDF file");
+      setTimeout(() => setMessage(""), 4000);
+    }
   };
 
   const handleApplyExtractedData = async () => {
@@ -1182,13 +1199,13 @@ export default function Options() {
               {!extractedResult ? (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between text-xs text-zinc-400">
-                    <span>Upload Resume file (.txt, .json) or paste LinkedIn / Resume text below:</span>
+                    <span>Upload Resume file (.pdf, .txt, .json) or paste LinkedIn / Resume text below:</span>
                     <label className="text-rose-500 hover:underline cursor-pointer flex items-center space-x-1 font-medium">
                       <FileUp className="w-3.5 h-3.5" />
                       <span>Upload File</span>
                       <input
                         type="file"
-                        accept=".txt,.json,.md"
+                        accept=".pdf,.txt,.json,.md"
                         onChange={handleFileUploadForExtraction}
                         className="hidden"
                       />
