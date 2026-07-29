@@ -1,5 +1,13 @@
 import { useState, useEffect } from "react";
 import { isRestrictedUrl, sendToTab } from "./tabBridge";
+import {
+  Settings,
+  RefreshCw,
+  Zap,
+  Check,
+  Sun,
+  Moon
+} from "lucide-react";
 
 interface FormStats {
   count: number;
@@ -60,8 +68,8 @@ const methodNames: Record<string, string> = {
   template: "generated template",
   generated: "local model",
   survey: "survey answer",
-  prompted: "needs your input",
-  none: "couldn't fill",
+  prompted: "needs input",
+  none: "unfilled",
 };
 
 export default function Popup() {
@@ -82,15 +90,19 @@ export default function Popup() {
     {},
   );
   const [pageBlocked, setPageBlocked] = useState(false);
+  const [theme, setTheme] = useState<"dark" | "light">("dark");
 
   useEffect(() => {
     let cancelled = false;
 
     const initializePopup = async () => {
       try {
-        const pref = await chrome.storage.sync.get(["surveyMode"]);
+        const pref = await chrome.storage.sync.get(["surveyMode", "theme"]);
         if (cancelled) return;
         if (pref.surveyMode !== undefined) setSurveyMode(pref.surveyMode);
+        if (pref.theme === "light" || pref.theme === "dark") {
+          setTheme(pref.theme);
+        }
 
         await detectForms();
         if (cancelled) return;
@@ -109,12 +121,26 @@ export default function Popup() {
     };
 
     initializePopup();
+
+    const listener = (changes: { [key: string]: chrome.storage.StorageChange }) => {
+      if (changes.theme) {
+        setTheme(changes.theme.newValue === "light" ? "light" : "dark");
+      }
+    };
+    chrome.storage.onChanged.addListener(listener);
+
     return () => {
       cancelled = true;
+      chrome.storage.onChanged.removeListener(listener);
     };
-    // Mount-only init: detectForms is stable for first open
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const toggleTheme = async () => {
+    const nextTheme = theme === "dark" ? "light" : "dark";
+    setTheme(nextTheme);
+    await chrome.storage.sync.set({ theme: nextTheme });
+  };
 
   const getActiveTab = async () => {
     const [tab] = await chrome.tabs.query({
@@ -136,7 +162,7 @@ export default function Popup() {
         setPageBlocked(true);
         setFormStats({ count: 0, fields: [] });
         setMessage(
-          "This page can't run extensions (browser internal / Web Store). Open a normal website.",
+          "Restricted page",
         );
         return;
       }
@@ -153,7 +179,7 @@ export default function Popup() {
       setMessage(
         err instanceof Error
           ? err.message
-          : "Could not reach this page. Refresh and try again.",
+          : "Could not connect to page",
       );
       setTimeout(() => setMessage(""), 6000);
     }
@@ -172,7 +198,7 @@ export default function Popup() {
       if (!tab.id) return;
 
       if (isRestrictedUrl(tab.url)) {
-        setMessage("Can't fill forms on this page.");
+        setMessage("Restricted page");
         return;
       }
 
@@ -197,7 +223,7 @@ export default function Popup() {
       }
     } catch {
       setMessage(
-        "Error: Could not communicate with the page. Refresh and try again.",
+        "Communication error with page",
       );
     } finally {
       setIsLoading(false);
@@ -218,7 +244,7 @@ export default function Popup() {
       },
     });
     await chrome.storage.sync.set({ sensitiveKeys: sensitive });
-    setMessage("Saved new profile data");
+    setMessage("Profile updated");
     setTimeout(() => setMessage(""), 3000);
     setSuggested([]);
   };
@@ -248,13 +274,11 @@ export default function Popup() {
           delete next[fieldLabel];
           return next;
         });
-        setMessage(`Filled "${fieldLabel}" with your input`);
+        setMessage(`Filled "${fieldLabel}"`);
         setTimeout(() => setMessage(""), 3000);
       }
     } catch {
-      setMessage(
-        "Failed to fill field. Try clicking on the field and typing manually.",
-      );
+      setMessage("Failed to fill field");
       setTimeout(() => setMessage(""), 4000);
     }
   };
@@ -265,17 +289,17 @@ export default function Popup() {
 
   const contextTypeLabel = (type: string): string => {
     const labels: Record<string, string> = {
-      "job-application": "🎯 Job Application",
-      registration: "📝 Registration",
-      survey: "📊 Survey",
-      checkout: "💳 Checkout",
-      government: "🏛️ Government Form",
-      contact: "📧 Contact Form",
-      login: "🔐 Login",
-      feedback: "💬 Feedback",
-      generic: "📋 Form",
+      "job-application": "Job Application",
+      registration: "Registration",
+      survey: "Survey",
+      checkout: "Checkout",
+      government: "Government Form",
+      contact: "Contact Form",
+      login: "Login",
+      feedback: "Feedback",
+      generic: "Web Form",
     };
-    return labels[type] || "📋 Form";
+    return labels[type] || "Web Form";
   };
 
   const methodCounts = (): Record<string, number> => {
@@ -291,144 +315,142 @@ export default function Popup() {
   ).length;
   const counts = methodCounts();
 
+  const isDark = theme === "dark";
+
   return (
-    <div className="p-4 w-80 bg-gray-50 min-h-[400px]">
-      <div className="flex items-center justify-between mb-3">
-        <h1 className="text-lg font-bold text-gray-800">FillIt</h1>
-        <button
-          onClick={openOptions}
-          className="text-gray-500 hover:text-gray-700 text-sm"
-          title="Open settings"
-        >
-          ⚙️
-        </button>
+    <div
+      className={`w-[340px] font-sans text-xs antialiased p-4 space-y-3 select-none ${
+        isDark
+          ? "bg-[#09090b] text-[#fafafa]"
+          : "bg-[#e9ecef] text-[#0f172a]"
+      }`}
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between pb-2 border-b border-zinc-500/10">
+        <div className="flex items-center space-x-2">
+          <div
+            className={`w-6 h-6 rounded flex items-center justify-center font-bold text-white text-[11px] ${
+              isDark ? "bg-[#e11d48]" : "bg-[#e0562e]"
+            }`}
+          >
+            F
+          </div>
+          <span className="font-semibold text-sm">FillIt</span>
+        </div>
+
+        <div className="flex items-center space-x-1">
+          <button
+            onClick={toggleTheme}
+            className={`p-1.5 rounded border transition-colors ${
+              isDark
+                ? "bg-[#18181b] border-[#27272a] text-zinc-300 hover:text-white"
+                : "bg-white border-[#dcdfe4] text-slate-700 hover:text-black"
+            }`}
+          >
+            {isDark ? <Sun className="w-3.5 h-3.5 text-amber-400" /> : <Moon className="w-3.5 h-3.5 text-rose-500" />}
+          </button>
+          <button
+            onClick={openOptions}
+            className={`p-1.5 rounded border transition-colors ${
+              isDark
+                ? "bg-[#18181b] border-[#27272a] text-zinc-300 hover:text-white"
+                : "bg-white border-[#dcdfe4] text-slate-700 hover:text-black"
+            }`}
+          >
+            <Settings className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
 
-      <div className="mb-3 text-xs text-gray-500 bg-gray-100 p-2 rounded flex items-center">
-        <span className="mr-1">🔒</span>
-        Data stays in your browser — nothing is ever uploaded.
-      </div>
-
-      <div className="mb-3 p-3 bg-blue-50 rounded">
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-medium text-blue-800">
-            {contextTypeLabel(formContext?.type || "generic")} ·{" "}
-            {formStats.count} fields
+      {/* Form Detection Card */}
+      <div
+        className={`p-3 rounded-lg border space-y-2 ${
+          isDark
+            ? "bg-[#121215] border-[#22222a]"
+            : "bg-white border-[#dcdfe4]"
+        }`}
+      >
+        <div className="flex items-center justify-between text-xs">
+          <span className="font-medium flex items-center space-x-1.5">
+            <span>{contextTypeLabel(formContext?.type || "generic")}</span>
+            <span className="text-zinc-500">·</span>
+            <span className="font-semibold">{formStats.count} fields</span>
           </span>
           <button
             onClick={detectForms}
-            className="text-xs text-blue-600 hover:text-blue-800"
+            className="text-zinc-400 hover:text-zinc-200"
           >
-            🔄 Refresh
+            <RefreshCw className="w-3 h-3" />
           </button>
         </div>
+
         {formStats.count > 0 && (
-          <div className="mt-2 text-xs text-blue-600">
-            {formStats.fields.slice(0, 3).map((field, index) => (
-              <div key={index} className="truncate">
-                {field.label ||
-                  field.placeholder ||
-                  field.name ||
-                  "Unnamed field"}
+          <div className="text-[11px] text-zinc-400 space-y-0.5 pt-0.5">
+            {formStats.fields.slice(0, 2).map((field, idx) => (
+              <div key={idx} className="truncate">
+                • {field.label || field.placeholder || field.name || "Field"}
               </div>
             ))}
-            {formStats.fields.length > 3 && (
-              <div>... and {formStats.fields.length - 3} more</div>
+            {formStats.fields.length > 2 && (
+              <div className="text-[10px] text-zinc-500">
+                + {formStats.fields.length - 2} more fields
+              </div>
             )}
           </div>
         )}
+
         {formStats.count === 0 && (
-          <div className="mt-1 text-xs text-blue-500">
+          <div className="text-xs text-zinc-500 py-1">
             {pageBlocked
-              ? "Extensions can't run on this page"
-              : "No forms detected on this page"}
+              ? "Browser extension disabled on this internal page."
+              : "No active forms detected on page."}
           </div>
         )}
       </div>
 
+      {/* Main Action */}
       <button
         onClick={fillForm}
         disabled={isLoading || formStats.count === 0}
-        className={`w-full p-3 rounded font-medium ${
+        className={`w-full py-2.5 px-4 rounded-lg font-medium text-xs flex items-center justify-center space-x-2 transition-all ${
           isLoading || formStats.count === 0
-            ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-            : "bg-blue-500 text-white hover:bg-blue-600"
+            ? "bg-zinc-800 text-zinc-500 cursor-not-allowed"
+            : isDark
+              ? "bg-[#e11d48] text-white hover:bg-[#be123c]"
+              : "bg-[#e0562e] text-white hover:bg-[#c2410c]"
         }`}
       >
-        {isLoading ? "Filling..." : "Fill Form"}
+        {isLoading ? (
+          <>
+            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+            <span>Filling...</span>
+          </>
+        ) : (
+          <>
+            <Zap className="w-3.5 h-3.5 fill-current" />
+            <span>Fill Form</span>
+          </>
+        )}
       </button>
 
-      <div className="mt-2 flex items-center justify-between p-2 bg-white rounded border border-gray-200">
-        <div>
-          <span className="text-xs font-medium text-gray-700">Survey Mode</span>
-          <div className="text-xs text-gray-400">Random answers for surveys</div>
-        </div>
-        <button
-          onClick={toggleSurveyMode}
-          className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-            surveyMode ? "bg-green-500" : "bg-gray-300"
-          }`}
-        >
-          <span
-            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-              surveyMode ? "translate-x-4" : "translate-x-0.5"
-            }`}
-          />
-        </button>
-      </div>
-
-      {message && (
-        <div
-          className={`mt-3 p-2 rounded text-sm ${
-            message.includes("Error") ||
-            message.includes("❌") ||
-            message.includes("can't") ||
-            message.includes("Can't") ||
-            message.includes("failed") ||
-            message.includes("Could not")
-              ? "bg-red-100 text-red-800"
-              : "bg-green-100 text-green-800"
-          }`}
-        >
-          {message}
-        </div>
-      )}
-
-      {matches.length > 0 && (
-        <div className="mt-3 p-3 bg-white rounded border border-gray-200">
-          <div className="text-sm font-medium text-gray-800 mb-2">
-            ✅ Filled {filledCount}/{formStats.count} fields
-          </div>
-          <div className="space-y-1 text-xs text-gray-600">
-            {Object.entries(counts).map(([method, count]) => {
-              if (method === "none" || method === "prompted") return null;
-              return (
-                <div key={method}>
-                  · {count} {methodNames[method] || method}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
+      {/* Prompted Context Input Fields */}
       {unfilled.filter((u) => u.method === "prompted").length > 0 && (
-        <div className="mt-3 p-3 bg-yellow-50 rounded border border-yellow-200">
-          <div className="text-sm font-medium text-yellow-800 mb-2">
-            ⚠️ {unfilled.filter((u) => u.method === "prompted").length} field
-            {unfilled.filter((u) => u.method === "prompted").length > 1
-              ? "s"
-              : ""}{" "}
-            need your context
+        <div
+          className={`p-3 rounded-lg border space-y-2 ${
+            isDark
+              ? "bg-[#181215] border-[#3d1820]"
+              : "bg-orange-50 border-orange-200"
+          }`}
+        >
+          <div className="font-semibold text-xs text-rose-500">
+            {unfilled.filter((u) => u.method === "prompted").length} field(s) require input
           </div>
-          <div className="space-y-2 max-h-48 overflow-auto">
+          <div className="space-y-1.5 max-h-36 overflow-y-auto">
             {unfilled
               .filter((u) => u.method === "prompted")
               .map((field, i) => (
                 <div key={i} className="space-y-1">
-                  <div className="text-xs text-yellow-700 truncate">
-                    {field.label}
-                  </div>
+                  <div className="text-[11px] truncate text-zinc-400">{field.label}</div>
                   <div className="flex space-x-1">
                     <input
                       type="text"
@@ -439,14 +461,18 @@ export default function Popup() {
                           [field.label]: e.target.value,
                         }))
                       }
-                      placeholder="Quick answer..."
-                      className="flex-1 p-1 text-xs border border-gray-300 rounded"
+                      placeholder="Enter value..."
+                      className={`flex-1 px-2 py-1 text-xs rounded border focus:outline-none ${
+                        isDark
+                          ? "bg-[#101014] border-[#2a2a34] text-white"
+                          : "bg-white border-[#cbd5e1] text-slate-900"
+                      }`}
                     />
                     <button
                       onClick={() => submitContext(field.label)}
-                      className="px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600"
+                      className="px-2 py-1 bg-rose-500 text-white font-medium rounded hover:bg-rose-600"
                     >
-                      ✓
+                      <Check className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 </div>
@@ -455,21 +481,21 @@ export default function Popup() {
         </div>
       )}
 
+      {/* Suggested Profile Updates Prompt */}
       {suggested.length > 0 && (
-        <div className="mt-3 p-3 border rounded bg-white">
-          <div className="text-sm font-medium text-gray-800 mb-2">
-            Save new data to your profile?
-          </div>
-          <div className="space-y-2 max-h-40 overflow-auto">
+        <div
+          className={`p-3 rounded-lg border space-y-2 ${
+            isDark
+              ? "bg-[#121215] border-[#22222a]"
+              : "bg-white border-[#dcdfe4]"
+          }`}
+        >
+          <div className="font-semibold text-xs">Save new values to profile?</div>
+          <div className="space-y-1 max-h-28 overflow-y-auto text-[11px]">
             {suggested.map((s, i) => (
-              <div
-                key={i}
-                className="flex items-center justify-between text-sm"
-              >
-                <div className="truncate">
-                  <span className="font-semibold">{s.key}:</span> {s.value}
-                </div>
-                <label className="ml-2 text-xs text-gray-600 flex items-center">
+              <div key={i} className="flex justify-between items-center text-zinc-400">
+                <span className="truncate">{s.key}: {s.value}</span>
+                <label className="text-[10px] flex items-center space-x-1 cursor-pointer ml-2">
                   <input
                     type="checkbox"
                     checked={sensitive.includes(s.key)}
@@ -480,23 +506,23 @@ export default function Popup() {
                           : prev.filter((k) => k !== s.key),
                       );
                     }}
-                    className="mr-1"
+                    className="w-3 h-3 rounded"
                   />
-                  Sensitive
+                  <span>Sensitive</span>
                 </label>
               </div>
             ))}
           </div>
-          <div className="flex justify-end mt-2 space-x-2">
+          <div className="flex justify-end space-x-2 pt-1">
             <button
               onClick={() => setSuggested([])}
-              className="text-sm px-3 py-1 bg-gray-200 rounded"
+              className="px-2.5 py-1 text-xs rounded bg-zinc-700/40 text-zinc-300 hover:text-white"
             >
               Dismiss
             </button>
             <button
               onClick={saveLearned}
-              className="text-sm px-3 py-1 bg-blue-600 text-white rounded"
+              className="px-2.5 py-1 text-xs rounded bg-rose-500 text-white font-medium hover:bg-rose-600"
             >
               Save
             </button>
@@ -504,14 +530,75 @@ export default function Popup() {
         </div>
       )}
 
-      <div className="mt-3 text-xs text-gray-500 space-y-1">
-        {learnedCount > 0 && (
-          <div>
-            🧠 Learned from {learnedCount} form field
-            {learnedCount !== 1 ? "s" : ""}
+      {/* Survey Toggle */}
+      <div
+        className={`flex items-center justify-between p-2.5 rounded-lg border ${
+          isDark
+            ? "bg-[#121215] border-[#22222a]"
+            : "bg-white border-[#dcdfe4]"
+        }`}
+      >
+        <span className="font-medium text-xs">Survey Mode</span>
+        <button
+          onClick={toggleSurveyMode}
+          className={`relative inline-flex h-4 w-7 rounded-full transition-colors ${
+            surveyMode
+              ? isDark ? "bg-[#e11d48]" : "bg-[#e0562e]"
+              : "bg-zinc-600/30"
+          }`}
+        >
+          <span
+            className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${
+              surveyMode ? "translate-x-3.5" : "translate-x-0.5"
+            }`}
+          />
+        </button>
+      </div>
+
+      {/* Notification Toast */}
+      {message && (
+        <div
+          className={`p-2.5 rounded-lg text-xs font-medium border flex items-center space-x-2 ${
+            message.includes("Error") || message.includes("Can't") || message.includes("Failed")
+              ? "bg-red-500/10 border-red-500/20 text-red-400"
+              : "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+          }`}
+        >
+          <span>{message}</span>
+        </div>
+      )}
+
+      {/* Matches */}
+      {matches.length > 0 && (
+        <div
+          className={`p-3 rounded-lg border space-y-1 ${
+            isDark
+              ? "bg-[#121215] border-[#22222a]"
+              : "bg-white border-[#dcdfe4]"
+          }`}
+        >
+          <div className="font-semibold text-emerald-500">
+            Filled {filledCount} / {formStats.count} fields
           </div>
-        )}
-        <div>💡 Set up your profile & context in ⚙️ for best results</div>
+          <div className="space-y-0.5 text-zinc-400 text-[11px]">
+            {Object.entries(counts).map(([method, count]) => {
+              if (method === "none" || method === "prompted") return null;
+              return (
+                <div key={method}>
+                  • {count} {methodNames[method] || method}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Footer link */}
+      <div className="pt-1 flex items-center justify-between text-[11px] text-zinc-500">
+        <span>{learnedCount} learned field{learnedCount !== 1 ? "s" : ""}</span>
+        <button onClick={openOptions} className="hover:underline">
+          Settings →
+        </button>
       </div>
     </div>
   );
