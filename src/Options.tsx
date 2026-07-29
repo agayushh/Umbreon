@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import type { UserData, ContextEntry } from "./types";
+import { parseResumeOrLinkedInText, type ExtractionResult } from "./resumeParser";
 import {
   User,
   FileText,
@@ -16,7 +17,10 @@ import {
   CheckCircle2,
   AlertCircle,
   Sun,
-  Moon
+  Moon,
+  Sparkles,
+  FileUp,
+  Check
 } from "lucide-react";
 
 interface LearnedEntry {
@@ -48,6 +52,11 @@ export default function Options() {
     skills: "",
     impact: "",
   });
+
+  // Resume & LinkedIn Extractor Modal State
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [resumeText, setResumeText] = useState("");
+  const [extractedResult, setExtractedResult] = useState<ExtractionResult | null>(null);
 
   useEffect(() => {
     loadUserData();
@@ -125,43 +134,143 @@ export default function Options() {
     }));
   };
 
-  const exportData = () => {
-    const dataStr = JSON.stringify(userData, null, 2);
-    const dataBlob = new Blob([dataStr], { type: "application/json" });
-    const url = URL.createObjectURL(dataBlob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "fillit-profile.json";
-    link.click();
-    URL.revokeObjectURL(url);
+  // ── Complete Backup Export & Import ────────────────────────────────
+
+  const exportFullData = async () => {
+    try {
+      const resp = await chrome.runtime.sendMessage({
+        action: "getContextEntries",
+      });
+      const entries = resp?.data || contextEntries || [];
+      const backupData = {
+        version: "1.0.0",
+        exportedAt: new Date().toISOString(),
+        userData,
+        contextEntries: entries,
+        learnedData,
+      };
+
+      const dataStr = JSON.stringify(backupData, null, 2);
+      const dataBlob = new Blob([dataStr], { type: "application/json" });
+      const url = URL.createObjectURL(dataBlob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `fillit-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+
+      setMessage("Backup exported locally as JSON");
+      setTimeout(() => setMessage(""), 3500);
+    } catch (err) {
+      console.error("Export error:", err);
+      setMessage("Export failed");
+    }
   };
 
-  const importData = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const importFullData = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
-        const imported = JSON.parse(e.target?.result as string);
-        if (
-          typeof imported !== "object" ||
-          imported === null ||
-          Array.isArray(imported)
-        ) {
+        const raw = e.target?.result as string;
+        const imported = JSON.parse(raw);
+
+        if (typeof imported !== "object" || imported === null) {
           setMessage("Invalid JSON format");
-          setTimeout(() => setMessage(""), 3000);
           return;
         }
-        setUserData(imported);
-        setMessage("Data imported");
-        setTimeout(() => setMessage(""), 3000);
-      } catch {
-        setMessage("Invalid file format");
-        setTimeout(() => setMessage(""), 3000);
+
+        const importedUserData = imported.userData || (imported.email || imported.name ? imported : {});
+        const importedContext = imported.contextEntries || [];
+
+        if (Object.keys(importedUserData).length > 0) {
+          const mergedUser = { ...userData, ...importedUserData };
+          setUserData(mergedUser);
+          await chrome.storage.sync.set({ userData: mergedUser });
+        }
+
+        if (Array.isArray(importedContext) && importedContext.length > 0) {
+          for (const entry of importedContext) {
+            await chrome.runtime.sendMessage({
+              action: "saveContextEntry",
+              data: entry,
+            });
+          }
+          await loadContextEntries();
+        }
+
+        setMessage("JSON Backup successfully imported and merged!");
+        setTimeout(() => setMessage(""), 4000);
+      } catch (err) {
+        console.error("Import error:", err);
+        setMessage("Invalid JSON file format");
+        setTimeout(() => setMessage(""), 3500);
       }
     };
     reader.readAsText(file);
+  };
+
+  // ── Resume & LinkedIn Extractor Handler ────────────────────────────
+
+  const handleParseText = () => {
+    if (!resumeText.trim()) return;
+    const result = parseResumeOrLinkedInText(resumeText);
+    setExtractedResult(result);
+  };
+
+  const handleFileUploadForExtraction = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const text = evt.target?.result as string;
+      if (text) {
+        setResumeText(text);
+        const result = parseResumeOrLinkedInText(text);
+        setExtractedResult(result);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleApplyExtractedData = async () => {
+    if (!extractedResult) return;
+
+    const updatedUserData: UserData = {
+      ...userData,
+      ...extractedResult.userData,
+      skills: Array.from(
+        new Set([...(userData.skills || []), ...extractedResult.extractedSkills]),
+      ),
+    };
+
+    setUserData(updatedUserData);
+    await chrome.storage.sync.set({ userData: updatedUserData });
+
+    for (const ctx of extractedResult.contextEntries) {
+      const entry: ContextEntry = {
+        id: `ctx_ext_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+        title: ctx.title,
+        description: ctx.description,
+        category: ctx.category,
+        skills: ctx.skills,
+        impact: ctx.impact,
+        timestamp: Date.now(),
+      };
+      await chrome.runtime.sendMessage({
+        action: "saveContextEntry",
+        data: entry,
+      });
+    }
+
+    await loadContextEntries();
+    setMessage("Extracted profile & context memory entries applied!");
+    setTimeout(() => setMessage(""), 4000);
+    setIsImportModalOpen(false);
+    setResumeText("");
+    setExtractedResult(null);
   };
 
   // ── Context Entries ────────────────────────────────────────────────
@@ -209,33 +318,34 @@ export default function Options() {
       setMessage("Context entry added");
       setTimeout(() => setMessage(""), 3000);
     } catch {
-      setMessage("Failed to save context entry");
+      setMessage("Failed to save entry");
     }
   };
 
-  const deleteContextEntryHandler = async (id: string) => {
+  const deleteContextEntry = async (id: string) => {
     try {
       await chrome.runtime.sendMessage({
         action: "deleteContextEntry",
         data: { id },
       });
       await loadContextEntries();
-      setMessage("Entry deleted");
+      setMessage("Context entry removed");
       setTimeout(() => setMessage(""), 2000);
     } catch {
       setMessage("Failed to delete entry");
     }
   };
 
-  // ── Learning History helpers ──────────────────────────────────────
+  // ── Field Memory (Learned Data) ────────────────────────────────────
 
   const loadLearnedData = async () => {
     setLearnedLoading(true);
     try {
       const resp = await chrome.runtime.sendMessage({
-        action: "getLearnedData",
+        action: "getLearnedHistory",
       });
       if (resp?.success) setLearnedData(resp.data || {});
+      else setLearnedData({});
     } catch {
       setLearnedData({});
     } finally {
@@ -299,36 +409,30 @@ export default function Options() {
       [/state|province/, "state"],
       [/zip|postal/, "zipCode"],
       [/country/, "country"],
-      [/salary|ctc/, "salary"],
-      [/availability/, "availability"],
+      [/current\s*role|title|position/, "currentRole"],
+      [/experience|years/, "yearsOfExperience"],
+      [/education|degree|qualification/, "education"],
     ];
-    for (const [rx, key] of map) {
-      if (rx.test(label)) return key;
-    }
-    return null;
+    const match = map.find(([rx]) => rx.test(label.toLowerCase()));
+    return match ? match[1] : null;
   };
-
-  const totalEntries = Object.values(learnedData).reduce(
-    (sum, arr) => sum + arr.length,
-    0,
-  );
 
   const isDark = theme === "dark";
 
   return (
     <div
-      className={`min-h-screen font-sans text-sm antialiased pb-16 transition-colors duration-150 ${
+      className={`min-h-screen font-sans text-xs antialiased pb-12 transition-colors ${
         isDark
           ? "bg-[#09090b] text-[#fafafa]"
           : "bg-[#e9ecef] text-[#0f172a]"
       }`}
     >
-      {/* Top Bar */}
+      {/* Header Bar */}
       <header
-        className={`border-b sticky top-0 z-40 backdrop-blur-md transition-colors duration-150 ${
+        className={`sticky top-0 z-40 border-b backdrop-blur-md transition-colors ${
           isDark
-            ? "bg-[#09090b]/90 border-[#18181b]"
-            : "bg-[#e9ecef]/90 border-[#d5d8e0]"
+            ? "bg-[#09090b]/90 border-[#1f1f23]"
+            : "bg-[#e9ecef]/90 border-[#d0d4dc]"
         }`}
       >
         <div className="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
@@ -340,13 +444,13 @@ export default function Options() {
             >
               F
             </div>
-            <span className="font-semibold text-base tracking-tight">FillIt</span>
+            <span className="font-semibold text-sm tracking-tight">FillIt Settings</span>
           </div>
 
           <div className="flex items-center space-x-2">
             <button
               onClick={toggleTheme}
-              className={`p-1.5 rounded-md border text-xs font-medium transition-all ${
+              className={`p-1.5 rounded-md border transition-colors ${
                 isDark
                   ? "bg-[#18181b] border-[#27272a] text-zinc-300 hover:text-white"
                   : "bg-white border-[#dcdfe4] text-slate-700 hover:text-black"
@@ -357,7 +461,19 @@ export default function Options() {
             </button>
 
             <button
-              onClick={exportData}
+              onClick={() => setIsImportModalOpen(true)}
+              className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-md border text-xs font-medium transition-all ${
+                isDark
+                  ? "bg-[#1f1317] border-[#4c1d28] text-rose-300 hover:text-rose-100"
+                  : "bg-orange-50 border-orange-200 text-orange-800 hover:text-orange-950"
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Import Resume / LinkedIn</span>
+            </button>
+
+            <button
+              onClick={exportFullData}
               className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-md border text-xs font-medium transition-all ${
                 isDark
                   ? "bg-[#18181b] border-[#27272a] text-zinc-300 hover:text-white"
@@ -365,7 +481,7 @@ export default function Options() {
               }`}
             >
               <Download className="w-3.5 h-3.5" />
-              <span>Export</span>
+              <span>Export JSON</span>
             </button>
 
             <label
@@ -376,11 +492,11 @@ export default function Options() {
               }`}
             >
               <Upload className="w-3.5 h-3.5" />
-              <span>Import</span>
+              <span>Import JSON</span>
               <input
                 type="file"
                 accept=".json"
-                onChange={importData}
+                onChange={importFullData}
                 className="hidden"
               />
             </label>
@@ -449,23 +565,23 @@ export default function Options() {
                   ? "bg-[#271015] border-[#5e1927] text-rose-300"
                   : "bg-red-50 border-red-200 text-red-700"
                 : isDark
-                  ? "bg-[#0e2417] border-[#1c4d2d] text-emerald-300"
+                  ? "bg-[#0e271d] border-[#1b5e43] text-emerald-300"
                   : "bg-emerald-50 border-emerald-200 text-emerald-800"
             }`}
           >
             {message.includes("Failed") || message.includes("Invalid") ? (
-              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              <AlertCircle className="w-4 h-4 shrink-0" />
             ) : (
-              <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
             )}
             <span>{message}</span>
           </div>
         )}
 
-        {/* TAB 1: PROFILE DATA */}
+        {/* Tab 1: Profile Data */}
         {activeTab === "profile" && (
           <div className="space-y-6">
-            {/* General Info */}
+            {/* Personal Details */}
             <div
               className={`p-5 rounded-xl border space-y-4 ${
                 isDark
@@ -473,118 +589,100 @@ export default function Options() {
                   : "bg-white border-[#dcdfe4]"
               }`}
             >
-              <div className="flex items-center space-x-2 pb-3 border-b border-zinc-500/10">
-                <User className={`w-4 h-4 ${isDark ? "text-rose-500" : "text-[#e0562e]"}`} />
-                <h2 className="font-semibold text-sm">Personal Details</h2>
+              <div className="flex items-center space-x-2 pb-2 border-b border-zinc-500/10 font-semibold text-xs text-zinc-400">
+                <User className="w-4 h-4 text-rose-500" />
+                <span className="text-white font-medium text-sm">Personal Details</span>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className={`block text-xs font-medium mb-1 ${isDark ? "text-zinc-400" : "text-slate-600"}`}>
-                    Full Name
-                  </label>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[11px] text-zinc-400">Full Name</label>
                   <input
                     type="text"
                     value={userData.name || ""}
                     onChange={(e) => updateField("name", e.target.value)}
-                    className={`w-full px-3 py-2 text-xs rounded-md border focus:outline-none ${
+                    placeholder="Ayush Goyal"
+                    className={`w-full px-3 py-2 text-xs rounded-lg border focus:outline-none ${
                       isDark
-                        ? "bg-[#18181c] border-[#2a2a34] text-white focus:border-rose-500"
-                        : "bg-[#f8fafc] border-[#dcdfe4] text-slate-900 focus:border-[#e0562e]"
+                        ? "bg-[#18181b] border-[#27272a] text-white"
+                        : "bg-white border-[#cbd5e1] text-slate-900"
                     }`}
-                    placeholder="John Doe"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] text-zinc-400">First Name</label>
+                  <input
+                    type="text"
+                    value={userData.firstName || ""}
+                    onChange={(e) => updateField("firstName", e.target.value)}
+                    placeholder="Ayush"
+                    className={`w-full px-3 py-2 text-xs rounded-lg border focus:outline-none ${
+                      isDark
+                        ? "bg-[#18181b] border-[#27272a] text-white"
+                        : "bg-white border-[#cbd5e1] text-slate-900"
+                    }`}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] text-zinc-400">Last Name</label>
+                  <input
+                    type="text"
+                    value={userData.lastName || ""}
+                    onChange={(e) => updateField("lastName", e.target.value)}
+                    placeholder="Goyal"
+                    className={`w-full px-3 py-2 text-xs rounded-lg border focus:outline-none ${
+                      isDark
+                        ? "bg-[#18181b] border-[#27272a] text-white"
+                        : "bg-white border-[#cbd5e1] text-slate-900"
+                    }`}
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className={`block text-xs font-medium mb-1 ${isDark ? "text-zinc-400" : "text-slate-600"}`}>
-                      First Name
-                    </label>
-                    <input
-                      type="text"
-                      value={userData.firstName || ""}
-                      onChange={(e) => updateField("firstName", e.target.value)}
-                      className={`w-full px-3 py-2 text-xs rounded-md border focus:outline-none ${
-                        isDark
-                          ? "bg-[#18181c] border-[#2a2a34] text-white focus:border-rose-500"
-                          : "bg-[#f8fafc] border-[#dcdfe4] text-slate-900 focus:border-[#e0562e]"
-                      }`}
-                      placeholder="John"
-                    />
-                  </div>
-                  <div>
-                    <label className={`block text-xs font-medium mb-1 ${isDark ? "text-zinc-400" : "text-slate-600"}`}>
-                      Last Name
-                    </label>
-                    <input
-                      type="text"
-                      value={userData.lastName || ""}
-                      onChange={(e) => updateField("lastName", e.target.value)}
-                      className={`w-full px-3 py-2 text-xs rounded-md border focus:outline-none ${
-                        isDark
-                          ? "bg-[#18181c] border-[#2a2a34] text-white focus:border-rose-500"
-                          : "bg-[#f8fafc] border-[#dcdfe4] text-slate-900 focus:border-[#e0562e]"
-                      }`}
-                      placeholder="Doe"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className={`block text-xs font-medium mb-1 ${isDark ? "text-zinc-400" : "text-slate-600"}`}>
-                    Email Address
-                  </label>
+                <div className="space-y-1 md:col-span-2">
+                  <label className="text-[11px] text-zinc-400">Email Address</label>
                   <input
                     type="email"
                     value={userData.email || ""}
                     onChange={(e) => updateField("email", e.target.value)}
-                    className={`w-full px-3 py-2 text-xs rounded-md border focus:outline-none ${
+                    placeholder="ayush@example.com"
+                    className={`w-full px-3 py-2 text-xs rounded-lg border focus:outline-none ${
                       isDark
-                        ? "bg-[#18181c] border-[#2a2a34] text-white focus:border-rose-500"
-                        : "bg-[#f8fafc] border-[#dcdfe4] text-slate-900 focus:border-[#e0562e]"
+                        ? "bg-[#18181b] border-[#27272a] text-white"
+                        : "bg-white border-[#cbd5e1] text-slate-900"
                     }`}
-                    placeholder="john@example.com"
                   />
                 </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className={`block text-xs font-medium mb-1 ${isDark ? "text-zinc-400" : "text-slate-600"}`}>
-                      Phone
-                    </label>
-                    <input
-                      type="tel"
-                      value={userData.phone || ""}
-                      onChange={(e) => updateField("phone", e.target.value)}
-                      className={`w-full px-3 py-2 text-xs rounded-md border focus:outline-none ${
-                        isDark
-                          ? "bg-[#18181c] border-[#2a2a34] text-white focus:border-rose-500"
-                          : "bg-[#f8fafc] border-[#dcdfe4] text-slate-900 focus:border-[#e0562e]"
-                      }`}
-                      placeholder="+1 (555) 000-0000"
-                    />
-                  </div>
-                  <div>
-                    <label className={`block text-xs font-medium mb-1 ${isDark ? "text-zinc-400" : "text-slate-600"}`}>
-                      Date of Birth
-                    </label>
-                    <input
-                      type="date"
-                      value={userData.dateOfBirth || ""}
-                      onChange={(e) => updateField("dateOfBirth", e.target.value)}
-                      className={`w-full px-3 py-2 text-xs rounded-md border focus:outline-none ${
-                        isDark
-                          ? "bg-[#18181c] border-[#2a2a34] text-white [color-scheme:dark]"
-                          : "bg-[#f8fafc] border-[#dcdfe4] text-slate-900 [color-scheme:light]"
-                      }`}
-                    />
-                  </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] text-zinc-400">Phone</label>
+                  <input
+                    type="text"
+                    value={userData.phone || ""}
+                    onChange={(e) => updateField("phone", e.target.value)}
+                    placeholder="+1 555-0199"
+                    className={`w-full px-3 py-2 text-xs rounded-lg border focus:outline-none ${
+                      isDark
+                        ? "bg-[#18181b] border-[#27272a] text-white"
+                        : "bg-white border-[#cbd5e1] text-slate-900"
+                    }`}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] text-zinc-400">Date of Birth</label>
+                  <input
+                    type="date"
+                    value={userData.dateOfBirth || ""}
+                    onChange={(e) => updateField("dateOfBirth", e.target.value)}
+                    className={`w-full px-3 py-2 text-xs rounded-lg border focus:outline-none ${
+                      isDark
+                        ? "bg-[#18181b] border-[#27272a] text-white"
+                        : "bg-white border-[#cbd5e1] text-slate-900"
+                    }`}
+                  />
                 </div>
               </div>
             </div>
 
-            {/* Address */}
+            {/* Address Information */}
             <div
               className={`p-5 rounded-xl border space-y-4 ${
                 isDark
@@ -592,99 +690,86 @@ export default function Options() {
                   : "bg-white border-[#dcdfe4]"
               }`}
             >
-              <div className="flex items-center space-x-2 pb-3 border-b border-zinc-500/10">
-                <MapPin className={`w-4 h-4 ${isDark ? "text-rose-500" : "text-[#e0562e]"}`} />
-                <h2 className="font-semibold text-sm">Address Information</h2>
+              <div className="flex items-center space-x-2 pb-2 border-b border-zinc-500/10 font-semibold text-xs text-zinc-400">
+                <MapPin className="w-4 h-4 text-rose-500" />
+                <span className="text-white font-medium text-sm">Address Information</span>
               </div>
 
-              <div className="space-y-3">
-                <div>
-                  <label className={`block text-xs font-medium mb-1 ${isDark ? "text-zinc-400" : "text-slate-600"}`}>
-                    Street Address
-                  </label>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="space-y-1 md:col-span-4">
+                  <label className="text-[11px] text-zinc-400">Street Address</label>
                   <input
                     type="text"
                     value={userData.address || ""}
                     onChange={(e) => updateField("address", e.target.value)}
-                    className={`w-full px-3 py-2 text-xs rounded-md border focus:outline-none ${
+                    placeholder="123 Innovation Way"
+                    className={`w-full px-3 py-2 text-xs rounded-lg border focus:outline-none ${
                       isDark
-                        ? "bg-[#18181c] border-[#2a2a34] text-white focus:border-rose-500"
-                        : "bg-[#f8fafc] border-[#dcdfe4] text-slate-900 focus:border-[#e0562e]"
+                        ? "bg-[#18181b] border-[#27272a] text-white"
+                        : "bg-white border-[#cbd5e1] text-slate-900"
                     }`}
-                    placeholder="123 Main St"
                   />
                 </div>
-
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <div>
-                    <label className={`block text-xs font-medium mb-1 ${isDark ? "text-zinc-400" : "text-slate-600"}`}>
-                      City
-                    </label>
-                    <input
-                      type="text"
-                      value={userData.city || ""}
-                      onChange={(e) => updateField("city", e.target.value)}
-                      className={`w-full px-3 py-2 text-xs rounded-md border focus:outline-none ${
-                        isDark
-                          ? "bg-[#18181c] border-[#2a2a34] text-white focus:border-rose-500"
-                          : "bg-[#f8fafc] border-[#dcdfe4] text-slate-900 focus:border-[#e0562e]"
-                      }`}
-                      placeholder="New York"
-                    />
-                  </div>
-                  <div>
-                    <label className={`block text-xs font-medium mb-1 ${isDark ? "text-zinc-400" : "text-slate-600"}`}>
-                      State
-                    </label>
-                    <input
-                      type="text"
-                      value={userData.state || ""}
-                      onChange={(e) => updateField("state", e.target.value)}
-                      className={`w-full px-3 py-2 text-xs rounded-md border focus:outline-none ${
-                        isDark
-                          ? "bg-[#18181c] border-[#2a2a34] text-white focus:border-rose-500"
-                          : "bg-[#f8fafc] border-[#dcdfe4] text-slate-900 focus:border-[#e0562e]"
-                      }`}
-                      placeholder="NY"
-                    />
-                  </div>
-                  <div>
-                    <label className={`block text-xs font-medium mb-1 ${isDark ? "text-zinc-400" : "text-slate-600"}`}>
-                      ZIP Code
-                    </label>
-                    <input
-                      type="text"
-                      value={userData.zipCode || ""}
-                      onChange={(e) => updateField("zipCode", e.target.value)}
-                      className={`w-full px-3 py-2 text-xs rounded-md border focus:outline-none ${
-                        isDark
-                          ? "bg-[#18181c] border-[#2a2a34] text-white focus:border-rose-500"
-                          : "bg-[#f8fafc] border-[#dcdfe4] text-slate-900 focus:border-[#e0562e]"
-                      }`}
-                      placeholder="10001"
-                    />
-                  </div>
-                  <div>
-                    <label className={`block text-xs font-medium mb-1 ${isDark ? "text-zinc-400" : "text-slate-600"}`}>
-                      Country
-                    </label>
-                    <input
-                      type="text"
-                      value={userData.country || ""}
-                      onChange={(e) => updateField("country", e.target.value)}
-                      className={`w-full px-3 py-2 text-xs rounded-md border focus:outline-none ${
-                        isDark
-                          ? "bg-[#18181c] border-[#2a2a34] text-white focus:border-rose-500"
-                          : "bg-[#f8fafc] border-[#dcdfe4] text-slate-900 focus:border-[#e0562e]"
-                      }`}
-                      placeholder="United States"
-                    />
-                  </div>
+                <div className="space-y-1 md:col-span-2">
+                  <label className="text-[11px] text-zinc-400">City</label>
+                  <input
+                    type="text"
+                    value={userData.city || ""}
+                    onChange={(e) => updateField("city", e.target.value)}
+                    placeholder="San Francisco"
+                    className={`w-full px-3 py-2 text-xs rounded-lg border focus:outline-none ${
+                      isDark
+                        ? "bg-[#18181b] border-[#27272a] text-white"
+                        : "bg-white border-[#cbd5e1] text-slate-900"
+                    }`}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] text-zinc-400">State</label>
+                  <input
+                    type="text"
+                    value={userData.state || ""}
+                    onChange={(e) => updateField("state", e.target.value)}
+                    placeholder="CA"
+                    className={`w-full px-3 py-2 text-xs rounded-lg border focus:outline-none ${
+                      isDark
+                        ? "bg-[#18181b] border-[#27272a] text-white"
+                        : "bg-white border-[#cbd5e1] text-slate-900"
+                    }`}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] text-zinc-400">ZIP Code</label>
+                  <input
+                    type="text"
+                    value={userData.zipCode || ""}
+                    onChange={(e) => updateField("zipCode", e.target.value)}
+                    placeholder="94105"
+                    className={`w-full px-3 py-2 text-xs rounded-lg border focus:outline-none ${
+                      isDark
+                        ? "bg-[#18181b] border-[#27272a] text-white"
+                        : "bg-white border-[#cbd5e1] text-slate-900"
+                    }`}
+                  />
+                </div>
+                <div className="space-y-1 md:col-span-2">
+                  <label className="text-[11px] text-zinc-400">Country</label>
+                  <input
+                    type="text"
+                    value={userData.country || ""}
+                    onChange={(e) => updateField("country", e.target.value)}
+                    placeholder="United States"
+                    className={`w-full px-3 py-2 text-xs rounded-lg border focus:outline-none ${
+                      isDark
+                        ? "bg-[#18181b] border-[#27272a] text-white"
+                        : "bg-white border-[#cbd5e1] text-slate-900"
+                    }`}
+                  />
                 </div>
               </div>
             </div>
 
-            {/* Professional Details */}
+            {/* Professional Profile */}
             <div
               className={`p-5 rounded-xl border space-y-4 ${
                 isDark
@@ -692,132 +777,133 @@ export default function Options() {
                   : "bg-white border-[#dcdfe4]"
               }`}
             >
-              <div className="flex items-center space-x-2 pb-3 border-b border-zinc-500/10">
-                <Briefcase className={`w-4 h-4 ${isDark ? "text-rose-500" : "text-[#e0562e]"}`} />
-                <h2 className="font-semibold text-sm">Professional Profile</h2>
+              <div className="flex items-center space-x-2 pb-2 border-b border-zinc-500/10 font-semibold text-xs text-zinc-400">
+                <Briefcase className="w-4 h-4 text-rose-500" />
+                <span className="text-white font-medium text-sm">Professional Profile</span>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className={`block text-xs font-medium mb-1 ${isDark ? "text-zinc-400" : "text-slate-600"}`}>
-                    Experience Summary
-                  </label>
-                  <textarea
+                <div className="space-y-1">
+                  <label className="text-[11px] text-zinc-400">Current Role</label>
+                  <input
+                    type="text"
+                    value={userData.currentRole || ""}
+                    onChange={(e) => updateField("currentRole", e.target.value)}
+                    placeholder="Senior Full Stack Engineer"
+                    className={`w-full px-3 py-2 text-xs rounded-lg border focus:outline-none ${
+                      isDark
+                        ? "bg-[#18181b] border-[#27272a] text-white"
+                        : "bg-white border-[#cbd5e1] text-slate-900"
+                    }`}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] text-zinc-400">Years of Experience</label>
+                  <input
+                    type="text"
                     value={userData.yearsOfExperience || ""}
                     onChange={(e) => updateField("yearsOfExperience", e.target.value)}
-                    rows={3}
-                    className={`w-full px-3 py-2 text-xs rounded-md border focus:outline-none resize-none ${
+                    placeholder="5+ years"
+                    className={`w-full px-3 py-2 text-xs rounded-lg border focus:outline-none ${
                       isDark
-                        ? "bg-[#18181c] border-[#2a2a34] text-white focus:border-rose-500"
-                        : "bg-[#f8fafc] border-[#dcdfe4] text-slate-900 focus:border-[#e0562e]"
+                        ? "bg-[#18181b] border-[#27272a] text-white"
+                        : "bg-white border-[#cbd5e1] text-slate-900"
                     }`}
-                    placeholder="5+ years in software engineering..."
                   />
                 </div>
 
-                <div>
-                  <label className={`block text-xs font-medium mb-1 ${isDark ? "text-zinc-400" : "text-slate-600"}`}>
-                    Education Summary
-                  </label>
-                  <textarea
+                <div className="space-y-1 md:col-span-2">
+                  <label className="text-[11px] text-zinc-400">Education Summary</label>
+                  <input
+                    type="text"
                     value={userData.education || ""}
                     onChange={(e) => updateField("education", e.target.value)}
-                    rows={3}
-                    className={`w-full px-3 py-2 text-xs rounded-md border focus:outline-none resize-none ${
+                    placeholder="B.S. in Computer Science"
+                    className={`w-full px-3 py-2 text-xs rounded-lg border focus:outline-none ${
                       isDark
-                        ? "bg-[#18181c] border-[#2a2a34] text-white focus:border-rose-500"
-                        : "bg-[#f8fafc] border-[#dcdfe4] text-slate-900 focus:border-[#e0562e]"
+                        ? "bg-[#18181b] border-[#27272a] text-white"
+                        : "bg-white border-[#cbd5e1] text-slate-900"
                     }`}
-                    placeholder="B.S. in Computer Science..."
                   />
                 </div>
-              </div>
 
-              {/* Skills */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className={`text-xs font-medium ${isDark ? "text-zinc-400" : "text-slate-600"}`}>
-                    Skills
-                  </label>
-                  <button
-                    onClick={addSkill}
-                    className="text-xs text-rose-500 hover:underline font-medium"
-                  >
-                    + Add skill
-                  </button>
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {userData.skills?.map((skill, index) => (
-                    <span
-                      key={index}
-                      className={`inline-flex items-center space-x-1 px-2.5 py-1 rounded-md text-xs border ${
-                        isDark
-                          ? "bg-[#18181c] border-[#2a2a34] text-zinc-300"
-                          : "bg-slate-100 border-slate-200 text-slate-800"
-                      }`}
+                {/* Skills */}
+                <div className="space-y-1 md:col-span-2">
+                  <div className="flex justify-between items-center">
+                    <label className="text-[11px] text-zinc-400">Skills</label>
+                    <button
+                      onClick={addSkill}
+                      className="text-rose-500 hover:text-rose-400 font-medium text-[11px]"
                     >
-                      <span>{skill}</span>
-                      <button
-                        onClick={() => removeSkill(index)}
-                        className="hover:text-rose-500 ml-1 text-zinc-400"
+                      + Add skill
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {userData.skills?.map((skill, idx) => (
+                      <span
+                        key={idx}
+                        className={`inline-flex items-center space-x-1 px-2.5 py-1 rounded-md text-xs border ${
+                          isDark
+                            ? "bg-[#1a1a20] border-[#2c2c36] text-zinc-200"
+                            : "bg-slate-100 border-slate-300 text-slate-800"
+                        }`}
                       >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </span>
-                  ))}
+                        <span>{skill}</span>
+                        <button
+                          onClick={() => removeSkill(idx)}
+                          className="text-zinc-500 hover:text-rose-400 ml-1"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
+                    ))}
+                    {!userData.skills?.length && (
+                      <span className="text-zinc-500 text-xs italic">No skills added yet</span>
+                    )}
+                  </div>
                 </div>
-              </div>
 
-              {/* Links */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2">
-                <div>
-                  <label className={`block text-xs font-medium mb-1 ${isDark ? "text-zinc-400" : "text-slate-600"}`}>
-                    LinkedIn
-                  </label>
+                {/* URLs */}
+                <div className="space-y-1">
+                  <label className="text-[11px] text-zinc-400">LinkedIn</label>
                   <input
                     type="url"
                     value={userData.linkedin || ""}
                     onChange={(e) => updateField("linkedin", e.target.value)}
-                    className={`w-full px-3 py-2 text-xs rounded-md border focus:outline-none ${
+                    placeholder="https://linkedin.com/in/ayush"
+                    className={`w-full px-3 py-2 text-xs rounded-lg border focus:outline-none ${
                       isDark
-                        ? "bg-[#18181c] border-[#2a2a34] text-white focus:border-rose-500"
-                        : "bg-[#f8fafc] border-[#dcdfe4] text-slate-900 focus:border-[#e0562e]"
+                        ? "bg-[#18181b] border-[#27272a] text-white"
+                        : "bg-white border-[#cbd5e1] text-slate-900"
                     }`}
-                    placeholder="https://linkedin.com/in/username"
                   />
                 </div>
-
-                <div>
-                  <label className={`block text-xs font-medium mb-1 ${isDark ? "text-zinc-400" : "text-slate-600"}`}>
-                    GitHub
-                  </label>
+                <div className="space-y-1">
+                  <label className="text-[11px] text-zinc-400">GitHub</label>
                   <input
                     type="url"
                     value={userData.github || ""}
                     onChange={(e) => updateField("github", e.target.value)}
-                    className={`w-full px-3 py-2 text-xs rounded-md border focus:outline-none ${
+                    placeholder="https://github.com/agayushh"
+                    className={`w-full px-3 py-2 text-xs rounded-lg border focus:outline-none ${
                       isDark
-                        ? "bg-[#18181c] border-[#2a2a34] text-white focus:border-rose-500"
-                        : "bg-[#f8fafc] border-[#dcdfe4] text-slate-900 focus:border-[#e0562e]"
+                        ? "bg-[#18181b] border-[#27272a] text-white"
+                        : "bg-white border-[#cbd5e1] text-slate-900"
                     }`}
-                    placeholder="https://github.com/username"
                   />
                 </div>
-
-                <div>
-                  <label className={`block text-xs font-medium mb-1 ${isDark ? "text-zinc-400" : "text-slate-600"}`}>
-                    Portfolio
-                  </label>
+                <div className="space-y-1 md:col-span-2">
+                  <label className="text-[11px] text-zinc-400">Portfolio</label>
                   <input
                     type="url"
                     value={userData.portfolio || ""}
                     onChange={(e) => updateField("portfolio", e.target.value)}
-                    className={`w-full px-3 py-2 text-xs rounded-md border focus:outline-none ${
+                    placeholder="https://ayush.dev"
+                    className={`w-full px-3 py-2 text-xs rounded-lg border focus:outline-none ${
                       isDark
-                        ? "bg-[#18181c] border-[#2a2a34] text-white focus:border-rose-500"
-                        : "bg-[#f8fafc] border-[#dcdfe4] text-slate-900 focus:border-[#e0562e]"
+                        ? "bg-[#18181b] border-[#27272a] text-white"
+                        : "bg-white border-[#cbd5e1] text-slate-900"
                     }`}
-                    placeholder="https://portfolio.com"
                   />
                 </div>
               </div>
@@ -825,10 +911,9 @@ export default function Options() {
           </div>
         )}
 
-        {/* TAB 2: CONTEXT ENTRIES */}
+        {/* Tab 2: Context Memory */}
         {activeTab === "context" && (
           <div className="space-y-6">
-            {/* Add Entry Card */}
             <div
               className={`p-5 rounded-xl border space-y-4 ${
                 isDark
@@ -836,335 +921,380 @@ export default function Options() {
                   : "bg-white border-[#dcdfe4]"
               }`}
             >
-              <h2 className="font-semibold text-sm">Add Context Entry</h2>
-              <div className="space-y-3">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <div className="md:col-span-2">
-                    <label className={`block text-xs font-medium mb-1 ${isDark ? "text-zinc-400" : "text-slate-600"}`}>
-                      Title
-                    </label>
-                    <input
-                      type="text"
-                      value={newContext.title}
-                      onChange={(e) => setNewContext((prev) => ({ ...prev, title: e.target.value }))}
-                      className={`w-full px-3 py-2 text-xs rounded-md border focus:outline-none ${
-                        isDark
-                          ? "bg-[#18181c] border-[#2a2a34] text-white focus:border-rose-500"
-                          : "bg-[#f8fafc] border-[#dcdfe4] text-slate-900 focus:border-[#e0562e]"
-                      }`}
-                      placeholder="Project or Leadership Title"
-                    />
-                  </div>
-                  <div>
-                    <label className={`block text-xs font-medium mb-1 ${isDark ? "text-zinc-400" : "text-slate-600"}`}>
-                      Category
-                    </label>
-                    <select
-                      value={newContext.category}
-                      onChange={(e) =>
-                        setNewContext((prev) => ({
-                          ...prev,
-                          category: e.target.value as ContextEntry["category"],
-                        }))
-                      }
-                      className={`w-full px-3 py-2 text-xs rounded-md border focus:outline-none ${
-                        isDark
-                          ? "bg-[#18181c] border-[#2a2a34] text-white"
-                          : "bg-[#f8fafc] border-[#dcdfe4] text-slate-900"
-                      }`}
-                    >
-                      <option value="project">Project</option>
-                      <option value="experience">Experience</option>
-                      <option value="achievement">Achievement</option>
-                      <option value="leadership">Leadership</option>
-                      <option value="education">Education</option>
-                      <option value="certification">Certification</option>
-                      <option value="other">Other</option>
-                    </select>
-                  </div>
+              <div className="flex items-center space-x-2 pb-2 border-b border-zinc-500/10 font-semibold text-xs text-zinc-400">
+                <Brain className="w-4 h-4 text-rose-500" />
+                <span className="text-white font-medium text-sm">Add Context Entry</span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-1 md:col-span-2">
+                  <label className="text-[11px] text-zinc-400">Title</label>
+                  <input
+                    type="text"
+                    value={newContext.title}
+                    onChange={(e) => setNewContext({ ...newContext, title: e.target.value })}
+                    placeholder="e.g. Distributed Cache System Project"
+                    className={`w-full px-3 py-2 text-xs rounded-lg border focus:outline-none ${
+                      isDark
+                        ? "bg-[#18181b] border-[#27272a] text-white"
+                        : "bg-white border-[#cbd5e1] text-slate-900"
+                    }`}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] text-zinc-400">Category</label>
+                  <select
+                    value={newContext.category}
+                    onChange={(e) => setNewContext({ ...newContext, category: e.target.value as ContextEntry["category"] })}
+                    className={`w-full px-3 py-2 text-xs rounded-lg border focus:outline-none ${
+                      isDark
+                        ? "bg-[#18181b] border-[#27272a] text-white"
+                        : "bg-white border-[#cbd5e1] text-slate-900"
+                    }`}
+                  >
+                    <option value="project">Project</option>
+                    <option value="experience">Experience</option>
+                    <option value="leadership">Leadership</option>
+                    <option value="education">Education</option>
+                    <option value="certification">Certification</option>
+                    <option value="other">Other</option>
+                  </select>
                 </div>
 
-                <div>
-                  <label className={`block text-xs font-medium mb-1 ${isDark ? "text-zinc-400" : "text-slate-600"}`}>
-                    Description
-                  </label>
+                <div className="space-y-1 md:col-span-3">
+                  <label className="text-[11px] text-zinc-400">Description / Key Details</label>
                   <textarea
-                    value={newContext.description}
-                    onChange={(e) => setNewContext((prev) => ({ ...prev, description: e.target.value }))}
                     rows={3}
-                    className={`w-full px-3 py-2 text-xs rounded-md border focus:outline-none resize-none ${
+                    value={newContext.description}
+                    onChange={(e) => setNewContext({ ...newContext, description: e.target.value })}
+                    placeholder="Describe what you built, problem solved, or role responsibilities..."
+                    className={`w-full px-3 py-2 text-xs rounded-lg border focus:outline-none ${
                       isDark
-                        ? "bg-[#18181c] border-[#2a2a34] text-white focus:border-rose-500"
-                        : "bg-[#f8fafc] border-[#dcdfe4] text-slate-900 focus:border-[#e0562e]"
+                        ? "bg-[#18181b] border-[#27272a] text-white"
+                        : "bg-white border-[#cbd5e1] text-slate-900"
                     }`}
-                    placeholder="Describe your role, responsibilities, and achievements..."
                   />
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div>
-                    <label className={`block text-xs font-medium mb-1 ${isDark ? "text-zinc-400" : "text-slate-600"}`}>
-                      Impact (optional)
-                    </label>
-                    <input
-                      type="text"
-                      value={newContext.impact}
-                      onChange={(e) => setNewContext((prev) => ({ ...prev, impact: e.target.value }))}
-                      className={`w-full px-3 py-2 text-xs rounded-md border focus:outline-none ${
-                        isDark
-                          ? "bg-[#18181c] border-[#2a2a34] text-white focus:border-rose-500"
-                          : "bg-[#f8fafc] border-[#dcdfe4] text-slate-900 focus:border-[#e0562e]"
-                      }`}
-                      placeholder="e.g. Increased speed by 40%"
-                    />
-                  </div>
-                  <div>
-                    <label className={`block text-xs font-medium mb-1 ${isDark ? "text-zinc-400" : "text-slate-600"}`}>
-                      Skills (comma separated)
-                    </label>
-                    <input
-                      type="text"
-                      value={newContext.skills}
-                      onChange={(e) => setNewContext((prev) => ({ ...prev, skills: e.target.value }))}
-                      className={`w-full px-3 py-2 text-xs rounded-md border focus:outline-none ${
-                        isDark
-                          ? "bg-[#18181c] border-[#2a2a34] text-white focus:border-rose-500"
-                          : "bg-[#f8fafc] border-[#dcdfe4] text-slate-900 focus:border-[#e0562e]"
-                      }`}
-                      placeholder="React, Node.js, AWS"
-                    />
-                  </div>
+                <div className="space-y-1 md:col-span-2">
+                  <label className="text-[11px] text-zinc-400">Skills / Technologies (comma separated)</label>
+                  <input
+                    type="text"
+                    value={newContext.skills}
+                    onChange={(e) => setNewContext({ ...newContext, skills: e.target.value })}
+                    placeholder="Go, Redis, Docker, Microservices"
+                    className={`w-full px-3 py-2 text-xs rounded-lg border focus:outline-none ${
+                      isDark
+                        ? "bg-[#18181b] border-[#27272a] text-white"
+                        : "bg-white border-[#cbd5e1] text-slate-900"
+                    }`}
+                  />
                 </div>
 
-                <div className="flex justify-end pt-1">
+                <div className="flex items-end md:col-span-1">
                   <button
                     onClick={addContextEntry}
-                    disabled={!newContext.title || !newContext.description}
-                    className={`px-4 py-2 text-xs font-medium rounded-md text-white transition-all ${
-                      isDark ? "bg-[#e11d48] hover:bg-[#be123c]" : "bg-[#e0562e] hover:bg-[#c2410c]"
-                    } disabled:opacity-50`}
+                    className={`w-full py-2 px-4 rounded-lg font-medium text-xs text-white transition-all ${
+                      isDark
+                        ? "bg-[#e11d48] hover:bg-[#be123c]"
+                        : "bg-[#e0562e] hover:bg-[#c2410c]"
+                    }`}
                   >
-                    Add Context
+                    Add Entry
                   </button>
                 </div>
               </div>
             </div>
 
-            {/* Existing Entries */}
+            {/* List of Context Entries */}
             <div className="space-y-3">
-              <h2 className="font-semibold text-sm">Saved Entries ({contextEntries.length})</h2>
-              {contextEntries.length === 0 ? (
+              {contextEntries.map((ctx) => (
                 <div
-                  className={`p-8 text-center rounded-xl border ${
+                  key={ctx.id}
+                  className={`p-4 rounded-xl border space-y-2 relative group ${
                     isDark
-                      ? "bg-[#121215] border-[#22222a] text-zinc-500"
-                      : "bg-white border-[#dcdfe4] text-slate-500"
+                      ? "bg-[#121215] border-[#22222a]"
+                      : "bg-white border-[#dcdfe4]"
                   }`}
                 >
-                  No context entries yet.
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {contextEntries.map((entry) => (
-                    <div
-                      key={entry.id}
-                      className={`p-4 rounded-xl border flex items-start justify-between ${
-                        isDark
-                          ? "bg-[#121215] border-[#22222a]"
-                          : "bg-white border-[#dcdfe4]"
-                      }`}
-                    >
-                      <div className="space-y-1">
-                        <div className="flex items-center space-x-2">
-                          <span className="font-medium text-sm">{entry.title}</span>
-                          <span
-                            className={`text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded ${
-                              isDark
-                                ? "bg-[#1f1618] text-rose-400 border border-[#3d1a22]"
-                                : "bg-orange-50 text-orange-700 border border-orange-200"
-                            }`}
-                          >
-                            {entry.category}
-                          </span>
-                        </div>
-                        <p className={`text-xs ${isDark ? "text-zinc-300" : "text-slate-700"}`}>
-                          {entry.description}
-                        </p>
-                        {entry.impact && (
-                          <div className="text-xs text-emerald-500">
-                            Impact: {entry.impact}
-                          </div>
-                        )}
-                      </div>
-                      <button
-                        onClick={() => deleteContextEntryHandler(entry.id)}
-                        className="text-zinc-500 hover:text-rose-500 p-1"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-zinc-500/10 text-rose-400">
+                        {ctx.category}
+                      </span>
+                      <h4 className="font-semibold text-sm text-white mt-1">{ctx.title}</h4>
                     </div>
-                  ))}
+                    <button
+                      onClick={() => deleteContextEntry(ctx.id)}
+                      className="text-zinc-500 hover:text-rose-400 p-1"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  <p className="text-xs text-zinc-400 leading-relaxed">{ctx.description}</p>
+                </div>
+              ))}
+              {!contextEntries.length && (
+                <div className="p-8 text-center text-zinc-500 text-xs">
+                  No context entries saved yet. Add entries or import from your resume/LinkedIn above!
                 </div>
               )}
             </div>
           </div>
         )}
 
-        {/* TAB 3: FIELD MEMORY */}
+        {/* Tab 3: Field Memory */}
         {activeTab === "learning" && (
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="font-semibold text-sm">
-                Recorded Form Answers ({totalEntries})
-              </h2>
-              <div className="flex items-center space-x-2">
+            <div className="flex justify-between items-center">
+              <span className="text-xs text-zinc-400">Learned form submissions across websites</span>
+              {Object.keys(learnedData).length > 0 && (
                 <button
-                  onClick={loadLearnedData}
-                  className={`px-3 py-1.5 rounded-md border text-xs font-medium ${
-                    isDark
-                      ? "bg-[#18181b] border-[#27272a] text-zinc-300 hover:text-white"
-                      : "bg-white border-[#dcdfe4] text-slate-700 hover:text-black"
-                  }`}
+                  onClick={clearAllHistory}
+                  className="text-xs text-rose-500 hover:underline"
                 >
-                  Refresh
+                  Clear All
                 </button>
-                {totalEntries > 0 && (
-                  <button
-                    onClick={clearAllHistory}
-                    className="px-3 py-1.5 rounded-md border border-rose-500/30 text-rose-500 text-xs font-medium hover:bg-rose-500/10"
-                  >
-                    Clear All
-                  </button>
-                )}
-              </div>
+              )}
             </div>
 
             {learnedLoading ? (
               <div className="p-8 text-center text-zinc-500 text-xs">Loading form memories...</div>
-            ) : totalEntries === 0 ? (
-              <div
-                className={`p-8 text-center rounded-xl border ${
-                  isDark
-                    ? "bg-[#121215] border-[#22222a] text-zinc-500"
-                    : "bg-white border-[#dcdfe4] text-slate-500"
-                }`}
-              >
-                No form memories stored yet. Fill forms on any website to auto-save field values.
-              </div>
+            ) : Object.keys(learnedData).length === 0 ? (
+              <div className="p-8 text-center text-zinc-500 text-xs">No learned form fields yet.</div>
             ) : (
-              <div className="space-y-3">
-                {Object.entries(learnedData).map(([domain, entries]) => (
-                  <div
-                    key={domain}
-                    className={`rounded-xl border overflow-hidden ${
-                      isDark
-                        ? "bg-[#121215] border-[#22222a]"
-                        : "bg-white border-[#dcdfe4]"
-                    }`}
-                  >
-                    <div
-                      className={`px-4 py-2 border-b font-medium text-xs flex justify-between ${
-                        isDark ? "bg-[#18181c] border-[#22222a]" : "bg-[#f8fafc] border-[#dcdfe4]"
-                      }`}
-                    >
-                      <span className="flex items-center space-x-1.5">
-                        <Globe className="w-3.5 h-3.5 text-zinc-400" />
-                        <span>{domain}</span>
-                      </span>
-                      <span className="text-zinc-500">{entries.length} fields</span>
-                    </div>
-
-                    <div className="divide-y divide-zinc-500/10">
-                      {entries.map((entry, idx) => (
-                        <div
-                          key={idx}
-                          className="px-4 py-2.5 flex items-center justify-between text-xs"
-                        >
-                          <div>
-                            <span className="font-medium text-zinc-400">{entry.fieldLabel}: </span>
-                            <span>{entry.value}</span>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <button
-                              onClick={() => mergeEntryToProfile(entry)}
-                              className="text-xs text-rose-500 hover:underline"
-                            >
-                              + Profile
-                            </button>
-                            <button
-                              onClick={() => deleteLearnedEntry(domain, entry.fieldLabel)}
-                              className="text-zinc-500 hover:text-rose-500"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+              Object.entries(learnedData).map(([domain, entries]) => (
+                <div
+                  key={domain}
+                  className={`p-4 rounded-xl border space-y-2 ${
+                    isDark
+                      ? "bg-[#121215] border-[#22222a]"
+                      : "bg-white border-[#dcdfe4]"
+                  }`}
+                >
+                  <div className="font-semibold text-xs text-rose-400 flex items-center space-x-1.5">
+                    <Globe className="w-3.5 h-3.5" />
+                    <span>{domain}</span>
                   </div>
-                ))}
-              </div>
+                  <div className="space-y-1.5 pt-1">
+                    {entries.map((entry, i) => (
+                      <div
+                        key={i}
+                        className="flex items-center justify-between text-xs p-2 rounded bg-zinc-500/5"
+                      >
+                        <div>
+                          <span className="font-medium text-white">{entry.fieldLabel}: </span>
+                          <span className="text-zinc-400">{entry.value}</span>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => mergeEntryToProfile(entry)}
+                            className="text-[11px] text-emerald-400 hover:underline"
+                          >
+                            Save to Profile
+                          </button>
+                          <button
+                            onClick={() => deleteLearnedEntry(domain, entry.fieldLabel)}
+                            className="text-zinc-500 hover:text-rose-400"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))
             )}
           </div>
         )}
 
-        {/* TAB 4: SETTINGS */}
+        {/* Tab 4: Settings */}
         {activeTab === "settings" && (
-          <div className="space-y-6">
-            <div
-              className={`p-5 rounded-xl border space-y-4 ${
-                isDark
-                  ? "bg-[#121215] border-[#22222a]"
-                  : "bg-white border-[#dcdfe4]"
-              }`}
-            >
-              <h2 className="font-semibold text-sm">Matching Engine</h2>
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="font-medium text-xs">On-Device LLM Models (WASM)</div>
-                  <div className={`text-xs ${isDark ? "text-zinc-400" : "text-slate-500"}`}>
-                    Downloads local MiniLM & Flan-T5 model weights for semantic matching.
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={enableLocalModels}
-                  onClick={async () => {
-                    const next = !enableLocalModels;
-                    setEnableLocalModels(next);
-                    await chrome.storage.sync.set({ enableLocalModels: next });
-                  }}
-                  className={`relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors ${
-                    enableLocalModels
-                      ? isDark ? "bg-[#e11d48]" : "bg-[#e0562e]"
-                      : "bg-zinc-600/30"
-                  }`}
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                      enableLocalModels ? "translate-x-4" : "translate-x-0.5"
-                    }`}
-                  />
-                </button>
-              </div>
+          <div
+            className={`p-5 rounded-xl border space-y-4 ${
+              isDark
+                ? "bg-[#121215] border-[#22222a]"
+                : "bg-white border-[#dcdfe4]"
+            }`}
+          >
+            <div className="flex items-center space-x-2 pb-2 border-b border-zinc-500/10 font-semibold text-xs text-zinc-400">
+              <Settings className="w-4 h-4 text-rose-500" />
+              <span className="text-white font-medium text-sm">Extension Preferences</span>
             </div>
 
-            <div
-              className={`p-5 rounded-xl border space-y-2 text-xs ${
-                isDark
-                  ? "bg-[#121215] border-[#22222a] text-zinc-400"
-                  : "bg-white border-[#dcdfe4] text-slate-600"
-              }`}
-            >
-              <div className="font-semibold text-sm text-zinc-300">Privacy</div>
-              <p>
-                All data, history, and context entries are stored 100% locally in your browser storage.
-              </p>
+            <div className="flex items-center justify-between py-2">
+              <div>
+                <div className="font-medium text-xs text-white">Experimental On-Device Models (WASM)</div>
+                <div className="text-[11px] text-zinc-400">Run local MiniLM semantic matching in browser</div>
+              </div>
+              <button
+                onClick={async () => {
+                  const next = !enableLocalModels;
+                  setEnableLocalModels(next);
+                  await chrome.storage.sync.set({ enableLocalModels: next });
+                }}
+                className={`relative inline-flex h-5 w-9 rounded-full transition-colors ${
+                  enableLocalModels
+                    ? isDark ? "bg-[#e11d48]" : "bg-[#e0562e]"
+                    : "bg-zinc-600/30"
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    enableLocalModels ? "translate-x-4.5" : "translate-x-0.5"
+                  }`}
+                />
+              </button>
             </div>
           </div>
         )}
       </main>
+
+      {/* Resume & LinkedIn Extraction Modal */}
+      {isImportModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div
+            className={`w-full max-w-2xl rounded-2xl border p-6 space-y-4 shadow-2xl overflow-hidden max-h-[90vh] flex flex-col ${
+              isDark ? "bg-[#121215] border-[#282834] text-white" : "bg-white border-[#cbd5e1] text-slate-900"
+            }`}
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-500/15">
+              <div className="flex items-center space-x-2">
+                <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-rose-500 to-amber-500 flex items-center justify-center text-white font-bold">
+                  <Sparkles className="w-4 h-4" />
+                </div>
+                <h3 className="font-bold text-sm">Import & Smart Extract from Resume or LinkedIn</h3>
+              </div>
+              <button
+                onClick={() => {
+                  setIsImportModalOpen(false);
+                  setExtractedResult(null);
+                }}
+                className="p-1 rounded text-zinc-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+              {/* Input Choice */}
+              {!extractedResult ? (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between text-xs text-zinc-400">
+                    <span>Upload Resume file (.txt, .json) or paste LinkedIn / Resume text below:</span>
+                    <label className="text-rose-500 hover:underline cursor-pointer flex items-center space-x-1 font-medium">
+                      <FileUp className="w-3.5 h-3.5" />
+                      <span>Upload File</span>
+                      <input
+                        type="file"
+                        accept=".txt,.json,.md"
+                        onChange={handleFileUploadForExtraction}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+
+                  <textarea
+                    rows={8}
+                    value={resumeText}
+                    onChange={(e) => setResumeText(e.target.value)}
+                    placeholder="Paste your LinkedIn Profile text, Resume text, or Experience section here..."
+                    className={`w-full p-3 text-xs rounded-xl border font-mono focus:outline-none ${
+                      isDark
+                        ? "bg-[#18181b] border-[#27272a] text-white"
+                        : "bg-slate-50 border-[#cbd5e1] text-slate-900"
+                    }`}
+                  />
+
+                  <div className="flex justify-end space-x-2">
+                    <button
+                      onClick={() => setIsImportModalOpen(false)}
+                      className="px-4 py-2 rounded-lg text-xs font-medium bg-zinc-700/40 text-zinc-300 hover:text-white"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleParseText}
+                      disabled={!resumeText.trim()}
+                      className={`px-5 py-2 rounded-lg text-xs font-semibold text-white flex items-center space-x-2 transition-all ${
+                        !resumeText.trim()
+                          ? "bg-zinc-800 text-zinc-500 cursor-not-allowed"
+                          : isDark
+                            ? "bg-[#e11d48] hover:bg-[#be123c]"
+                            : "bg-[#e0562e] hover:bg-[#c2410c]"
+                      }`}
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>Extract Profile & Context</span>
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* Extracted Preview */
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-semibold text-emerald-500 flex items-center space-x-1">
+                      <Check className="w-4 h-4" />
+                      <span>Extracted {Object.keys(extractedResult.userData).length} Profile Fields & {extractedResult.contextEntries.length} Context Memories</span>
+                    </span>
+                    <button
+                      onClick={() => setExtractedResult(null)}
+                      className="text-xs text-zinc-400 hover:underline"
+                    >
+                      Edit Text
+                    </button>
+                  </div>
+
+                  {/* Profile Fields Preview */}
+                  <div className="p-3 rounded-xl bg-zinc-500/10 border border-zinc-500/20 space-y-2">
+                    <h4 className="font-bold text-xs">Extracted Profile Fields:</h4>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      {Object.entries(extractedResult.userData).map(([k, v]) => (
+                        <div key={k} className="p-1.5 rounded bg-zinc-500/10 truncate">
+                          <span className="text-zinc-400 capitalize">{k}: </span>
+                          <span className="font-medium text-white">{String(v)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Context Entries Preview */}
+                  <div className="p-3 rounded-xl bg-zinc-500/10 border border-zinc-500/20 space-y-2">
+                    <h4 className="font-bold text-xs">Extracted Context Memories ({extractedResult.contextEntries.length}):</h4>
+                    <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
+                      {extractedResult.contextEntries.map((ctx, i) => (
+                        <div key={i} className="p-2 rounded bg-zinc-500/10 text-xs space-y-1">
+                          <div className="font-semibold text-rose-400">{ctx.title}</div>
+                          <div className="text-zinc-300 text-[11px] truncate">{ctx.description}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end space-x-2 pt-2 border-t border-zinc-500/20">
+                    <button
+                      onClick={() => setExtractedResult(null)}
+                      className="px-4 py-2 rounded-lg text-xs font-medium bg-zinc-700/40 text-zinc-300 hover:text-white"
+                    >
+                      Back
+                    </button>
+                    <button
+                      onClick={handleApplyExtractedData}
+                      className={`px-5 py-2 rounded-lg text-xs font-semibold text-white flex items-center space-x-2 transition-all ${
+                        isDark ? "bg-[#e11d48] hover:bg-[#be123c]" : "bg-[#e0562e] hover:bg-[#c2410c]"
+                      }`}
+                    >
+                      <Save className="w-3.5 h-3.5" />
+                      <span>Apply All to Profile & Storage</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
