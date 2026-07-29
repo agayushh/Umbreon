@@ -176,6 +176,12 @@ function captureAndSendFormData(form: HTMLFormElement): void {
 
 // ── Initialize ───────────────────────────────────────────────────────
 
+chrome.storage.onChanged.addListener((changes) => {
+  if (changes.userData || changes.surveyMode || changes.enableLocalModels) {
+    formFiller.initialize().catch(() => {});
+  }
+});
+
 formFiller
   .initialize()
   .then(() => {

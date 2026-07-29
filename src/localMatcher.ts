@@ -344,23 +344,23 @@ const SUBJECTIVE_KEYWORDS = [
 // ── Profile key patterns for inference ───────────────────────────────
 
 const PROFILE_KEY_PATTERNS: Array<[RegExp, keyof UserData]> = [
-  [/email|e-?mail|mail/, "email"],
-  [/phone|mobile|contact\s*number|tel/, "phone"],
-  [/name|full\s*name/, "name"],
-  [/linkedin|linked\s*in/, "linkedin"],
-  [/github/, "github"],
-  [/portfolio|website|blog/, "portfolio"],
-  [/address/, "address"],
-  [/city/, "city"],
-  [/state|province/, "state"],
-  [/zip|postal|pincode|pin\s*code/, "zipCode"],
-  [/country/, "country"],
-  [/salary|ctc|compensation/, "salary"],
-  [/availability|available|notice\s*period/, "availability"],
-  [/skills?$|skillset|expertise/, "skills"],
-  [/education|qualification|degree|university|college/, "education"],
-  [/experience|years|work\s*exp/, "yearsOfExperience"],
-  [/certification/, "certifications"],
+  [/\b(email|e-?mail|mail)\b/i, "email"],
+  [/\b(phone|mobile|contact\s*number|cell|telephone|tel)\b/i, "phone"],
+  [/\b(name|full\s*name)\b/i, "name"],
+  [/\b(linkedin|linked\s*in)\b/i, "linkedin"],
+  [/\b(github)\b/i, "github"],
+  [/\b(portfolio|website|blog)\b/i, "portfolio"],
+  [/\b(address|street\s*address)\b/i, "address"],
+  [/\b(city|town)\b/i, "city"],
+  [/\b(state|province)\b/i, "state"],
+  [/\b(zip|zipcode|postal|pincode|pin\s*code)\b/i, "zipCode"],
+  [/\b(country|nation)\b/i, "country"],
+  [/\b(salary|ctc|compensation)\b/i, "salary"],
+  [/\b(availability|notice\s*period)\b/i, "availability"],
+  [/\b(skills?$|skillset|expertise)\b/i, "skills"],
+  [/\b(education|qualification|degree|university|college)\b/i, "education"],
+  [/\b(experience|work\s*exp)\b/i, "yearsOfExperience"],
+  [/\b(certification|certifications)\b/i, "certifications"],
 ];
 
 // ── LocalMatcher class ───────────────────────────────────────────────
@@ -873,7 +873,7 @@ Answer:`;
     return null;
   }
 
-  /** Drop Google Forms entry.123 / uuid-like tokens that break exact matching. */
+  /** Drop Google Forms entry.123 / uuid-like tokens & generic placeholders like "Your answer" that break exact matching. */
   private getMatchText(field: FormField): string {
     const isMachine = (s: string) =>
       /entry\.\d+/i.test(s) ||
@@ -881,19 +881,37 @@ Answer:`;
       /^[a-f0-9]{8,}$/i.test(s) ||
       (/^[a-z0-9]+([._-][a-z0-9]+){2,}$/i.test(s) && !/\s/.test(s));
 
-    const human = [field.label, field.placeholder]
-      .map((s) => (s || "").trim())
-      .filter((s) => s && !isMachine(s));
+    const isGenericPlaceholder = (s: string) =>
+      /^(your answer|type here|enter text|type your answer|your response|short answer text|long answer text|answer|text|input|enter value)$/i.test(
+        s.trim(),
+      );
 
-    if (human.length > 0) {
-      // Prefer shortest human label (usually the question title)
-      return [...human].sort((a, b) => a.length - b.length)[0];
+    // Prefer human label first if it's clean and not generic
+    if (
+      field.label &&
+      !isMachine(field.label) &&
+      !isGenericPlaceholder(field.label)
+    ) {
+      return field.label.trim();
     }
 
-    const fallback = [field.name, field.id]
+    if (
+      field.placeholder &&
+      !isMachine(field.placeholder) &&
+      !isGenericPlaceholder(field.placeholder)
+    ) {
+      return field.placeholder.trim();
+    }
+
+    const human = [field.label, field.placeholder, field.name, field.id]
       .map((s) => (s || "").trim())
-      .filter((s) => s && !isMachine(s));
-    return fallback[0] || [field.label, field.placeholder, field.name, field.id]
+      .filter((s) => s && !isMachine(s) && !isGenericPlaceholder(s));
+
+    if (human.length > 0) {
+      return human[0];
+    }
+
+    return [field.label, field.placeholder, field.name, field.id]
       .filter(Boolean)
       .join(" ")
       .trim();
@@ -1696,6 +1714,25 @@ Answer:`;
   // ── Main orchestration ─────────────────────────────────────────────
 
   async matchAll(fields: FormField[]): Promise<FillResult> {
+    try {
+      const syncResult = await chrome.storage.sync.get([
+        "userData",
+        "surveyMode",
+        "enableLocalModels",
+      ]);
+      if (syncResult.userData) {
+        this.userData = { ...this.userData, ...syncResult.userData };
+      }
+      if (syncResult.surveyMode !== undefined) {
+        this.surveyMode = syncResult.surveyMode;
+      }
+      if (syncResult.enableLocalModels !== undefined) {
+        this.enableLocalModels = syncResult.enableLocalModels === true;
+      }
+    } catch {
+      // ignore sync errors
+    }
+
     const formContext = detectFormContext();
     log.info(
       `Detected form context: ${formContext.type} (${formContext.confidence.toFixed(2)})`,
@@ -1738,12 +1775,14 @@ Answer:`;
           });
         }
 
-        // Track potential profile updates
+        // Track potential profile updates (only when user manually inputs or generates new values)
         if (
           match.value &&
           match.method !== "none" &&
           match.method !== "prompted" &&
-          match.method !== "survey"
+          match.method !== "survey" &&
+          match.method !== "context" &&
+          match.method !== "synonym"
         ) {
           const label = (
             field.label ||

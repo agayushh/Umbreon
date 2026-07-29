@@ -6,14 +6,9 @@ import { createLogger } from "./logger";
 const log = createLogger("FormFiller");
 
 class FormFiller {
-  private isInitialized = false;
-
   async initialize(): Promise<void> {
-    if (this.isInitialized) return;
-
     try {
       await localMatcher.initialize();
-      this.isInitialized = true;
       log.info("Initialized successfully");
     } catch (error) {
       log.error("Initialization failed", error);
