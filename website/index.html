@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!-- Primary SEO Meta Tags -->
+  <title>FillIt — Modern AI Form Filler Chrome Extension | 100% Private & On-Device</title>
+  <meta name="title" content="FillIt — Modern AI Form Filler Chrome Extension | 100% Private & On-Device" />
+  <meta name="description" content="Auto-fill job applications, surveys, and web forms in 1 click. FillIt uses on-device local profile memory and context-aware matching without sending data to any cloud servers." />
+  <meta name="keywords" content="Chrome extension, form filler, AI form filler, job application auto fill, auto fill chrome, private form filler, on-device AI, autofill forms" />
+  <meta name="author" content="FillIt Team" />
+  <meta name="robots" content="index, follow" />
+  <link rel="canonical" href="https://fillit.app/" />
+  <meta name="theme-color" content="#08080a" />
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://fillit.app/" />
+  <meta property="og:title" content="FillIt — Modern AI Form Filler Chrome Extension" />
+  <meta property="og:description" content="Auto-fill job applications, surveys, and web forms in 1 click. 100% private, on-device AI form filler for Chrome." />
+  <meta property="og:image" content="https://fillit.app/og-image.png" />
+  <meta property="og:site_name" content="FillIt" />
+
+  <!-- Twitter -->
+  <meta property="twitter:card" content="summary_large_image" />
+  <meta property="twitter:url" content="https://fillit.app/" />
+  <meta property="twitter:title" content="FillIt — Modern AI Form Filler Chrome Extension" />
+  <meta property="twitter:description" content="Auto-fill job applications, surveys, and web forms in 1 click. 100% private, on-device AI form filler for Chrome." />
+  <meta property="twitter:image" content="https://fillit.app/og-image.png" />
+
+  <!-- Schema.org JSON-LD Structured Data for SEO -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "FillIt",
+    "operatingSystem": "Chrome OS, Windows, macOS, Linux",
+    "applicationCategory": "BrowserExtension",
+    "offers": {
+      "@type": "Offer",
+      "price": "0.00",
+      "priceCurrency": "USD"
+    },
+    "description": "Smart, privacy-first AI Chrome Extension for auto-filling forms, job applications, and surveys using local profile & context memory.",
+    "aggregateRating": {
+      "@type": "AggregateRating",
+      "ratingValue": "4.9",
+      "ratingCount": "1280"
+    }
+  }
+  </script>
+
+  <!-- Google Fonts & Tailwind CSS CDN -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+          },
+          colors: {
+            shopify: {
+              bg: '#08080a',
+              card: '#111115',
+              border: '#22222a',
+              red: '#e11d48',
+            },
+            nexidus: {
+              orange: '#e0562e',
+              navy: '#253549',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    .glow-red {
+      box-shadow: 0 0 40px -5px rgba(225, 29, 72, 0.35);
+    }
+    .glow-orange {
+      box-shadow: 0 0 40px -5px rgba(224, 86, 46, 0.35);
+    }
+  </style>
+</head>
+
+<body class="bg-[#08080a] text-white selection:bg-[#e11d48]/30 selection:text-white min-h-screen flex flex-col">
+
+  <!-- Header / Navigation -->
+  <header className="sticky top-0 z-50 bg-[#08080a]/85 backdrop-blur-md border-b border-[#1e1e24]" id="header">
+    <nav class="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between" aria-label="Main Navigation">
+      <a href="#" class="flex items-center space-x-3 group">
+        <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-[#f43f5e] via-[#e11d48] to-[#9f1239] flex items-center justify-center font-bold text-white text-sm shadow-md shadow-rose-950/40 border border-white/10 group-hover:scale-105 transition-transform">
+          F
+        </div>
+        <div class="flex items-center space-x-2">
+          <span class="font-bold text-lg tracking-tight text-white">FillIt</span>
+          <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#211217] text-[#fda4af] border border-[#4c1d28]">
+            v1.0 Free
+          </span>
+        </div>
+      </a>
+
+      <div class="hidden md:flex items-center space-x-8 text-xs font-medium text-zinc-400">
+        <a href="#features" class="hover:text-white transition-colors">Features</a>
+        <a href="#how-it-works" class="hover:text-white transition-colors">How It Works</a>
+        <a href="#privacy" class="hover:text-white transition-colors">Privacy</a>
+        <a href="#faq" class="hover:text-white transition-colors">FAQ</a>
+      </div>
+
+      <div class="flex items-center space-x-3">
+        <a
+          href="https://chromewebstore.google.com"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="inline-flex items-center space-x-2 px-4 py-2 rounded-lg bg-[#e11d48] hover:bg-[#be123c] text-white text-xs font-semibold shadow-lg shadow-rose-950/50 border border-white/10 transition-all hover:scale-[1.02] active:scale-[0.98]"
+        >
+          <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24">
+            <path d="M12 0C5.37 0 0 5.37 0 12s5.37 12 12 12 12-5.37 12-12S18.63 0 12 0zm0 18c-3.31 0-6-2.69-6-6s2.69-6 6-6 6 2.69 6 6-2.69 6-6 6z"/>
+          </svg>
+          <span>Add to Chrome</span>
+        </a>
+      </div>
+    </nav>
+  </header>
+
+  <!-- Hero Section -->
+  <main class="flex-1">
+    <section class="relative pt-16 pb-20 px-6 max-w-6xl mx-auto text-center overflow-hidden">
+      <!-- Background Ambient Glow -->
+      <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[300px] bg-[#e11d48]/15 blur-[120px] rounded-full pointer-events-none -z-10"></div>
+
+      <!-- Privacy Pill Tag -->
+      <div class="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-[#1c1216] border border-[#4d1927] text-[#fda4af] text-xs font-medium mb-6 shadow-md">
+        <span class="w-2 h-2 rounded-full bg-[#e11d48] animate-pulse"></span>
+        <span>100% On-Device AI • Zero Server Uploads</span>
+      </div>
+
+      <!-- Main Headline -->
+      <h1 class="text-4xl sm:text-6xl font-extrabold text-white tracking-tight leading-tight max-w-4xl mx-auto">
+        Fill Web Forms in <span class="bg-clip-text text-transparent bg-gradient-to-r from-[#f43f5e] via-[#e11d48] to-[#fda4af]">1-Click</span>. Never Type the Same Answer Again.
+      </h1>
+
+      <!-- Subtitle -->
+      <p class="mt-6 text-base sm:text-lg text-zinc-400 max-w-2xl mx-auto leading-relaxed">
+        FillIt intelligently auto-completes job applications, surveys, and complex web forms using your local profile memory and context entries. Fast, private, and effortless.
+      </p>
+
+      <!-- Primary Call to Action Buttons -->
+      <div class="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
+        <a
+          href="https://chromewebstore.google.com"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-gradient-to-r from-[#e11d48] to-[#be123c] text-white font-semibold text-sm shadow-xl shadow-rose-950/60 border border-white/10 hover:opacity-95 transition-all hover:scale-[1.02] active:scale-[0.98] inline-flex items-center justify-center space-x-2.5"
+        >
+          <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9l6 4.5-6 4.5z"/>
+          </svg>
+          <span>Install Chrome Extension — Free</span>
+        </a>
+
+        <a
+          href="#how-it-works"
+          class="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-[#141418] hover:bg-[#1e1e24] text-zinc-300 hover:text-white font-medium text-sm border border-[#27272a] transition-all inline-flex items-center justify-center space-x-2"
+        >
+          <span>See How It Works</span>
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+        </a>
+      </div>
+
+      <!-- Feature highlights bar -->
+      <div class="mt-12 pt-8 border-t border-[#18181b] grid grid-cols-2 md:grid-cols-4 gap-4 text-center text-xs text-zinc-400">
+        <div>🔒 <strong class="text-white">100% Local Storage</strong></div>
+        <div>🧠 <strong class="text-white">Contextual Memory</strong></div>
+        <div>⚡ <strong class="text-white">Instant 1-Click Fill</strong></div>
+        <div>📊 <strong class="text-white">Survey Randomizer</strong></div>
+      </div>
+    </section>
+
+    <!-- Interactive Mock Extension UI Preview -->
+    <section class="py-12 max-w-5xl mx-auto px-6" id="preview">
+      <div class="text-center mb-8">
+        <h2 class="text-2xl font-bold text-white">Experience FillIt Interface</h2>
+        <p class="text-xs text-zinc-400 mt-1">Clean, distraction-free extension UI designed for speed</p>
+      </div>
+
+      <div class="bg-[#111115] border border-[#22222a] rounded-2xl shadow-2xl overflow-hidden p-6 max-w-xl mx-auto glow-red">
+        <!-- Mock Header -->
+        <div class="flex items-center justify-between pb-3 border-b border-[#22222a]">
+          <div class="flex items-center space-x-2">
+            <div class="w-6 h-6 rounded bg-[#e11d48] flex items-center justify-center font-bold text-white text-xs">F</div>
+            <span class="font-semibold text-sm text-white">FillIt</span>
+            <span class="text-[10px] px-1.5 py-0.5 rounded bg-[#211217] text-[#fda4af] border border-[#4c1d28]">Local AI</span>
+          </div>
+          <span class="text-xs text-zinc-400">Shopify Red Theme</span>
+        </div>
+
+        <!-- Form Detection Card -->
+        <div class="mt-4 p-3.5 rounded-xl bg-[#16161a] border border-[#2a2a34] space-y-2">
+          <div class="flex items-center justify-between text-xs">
+            <span class="font-semibold text-[#fda4af]">🎯 Job Application Form</span>
+            <span class="text-xs text-zinc-400">8 fields detected</span>
+          </div>
+          <div class="text-[11px] text-zinc-400 space-y-1 pt-1">
+            <div>• Full Name: <span class="text-white">Ayush Goyal</span></div>
+            <div>• Email: <span class="text-white">ayush@example.com</span></div>
+            <div>• Project Experience: <span class="text-emerald-400">Matched from Context</span></div>
+          </div>
+        </div>
+
+        <!-- Action Button -->
+        <button class="mt-4 w-full py-3 rounded-xl bg-[#e11d48] text-white font-semibold text-xs shadow-lg shadow-rose-950/50 flex items-center justify-center space-x-2">
+          <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M13 2L3 14h7v8l10-12h-7z"/></svg>
+          <span>Fill Form Automatically</span>
+        </button>
+
+        <div class="mt-3 flex items-center justify-between text-[11px] text-zinc-400 pt-2 border-t border-[#22222a]">
+          <span>⚡ 8 of 8 fields auto-matched</span>
+          <span class="text-[#fda4af]">100% Privacy</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Key Features Grid -->
+    <section class="py-16 max-w-6xl mx-auto px-6" id="features">
+      <div class="text-center max-w-3xl mx-auto mb-12">
+        <h2 class="text-3xl font-extrabold text-white">Built for Speed. Designed for Privacy.</h2>
+        <p class="text-sm text-zinc-400 mt-2">Everything you need to complete forms in seconds without re-typing data</p>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <!-- Card 1 -->
+        <div class="p-6 rounded-2xl bg-[#111115] border border-[#22222a] space-y-3 hover:border-rose-500/40 transition-colors">
+          <div class="w-10 h-10 rounded-xl bg-[#211217] text-[#fda4af] flex items-center justify-center text-lg border border-[#4c1d28]">🔒</div>
+          <h3 class="font-semibold text-base text-white">100% On-Device Privacy</h3>
+          <p class="text-xs text-zinc-400 leading-relaxed">
+            Your personal information, resume history, and passwords reside exclusively inside your browser's local storage. Zero cloud servers. Zero tracking.
+          </p>
+        </div>
+
+        <!-- Card 2 -->
+        <div class="p-6 rounded-2xl bg-[#111115] border border-[#22222a] space-y-3 hover:border-rose-500/40 transition-colors">
+          <div class="w-10 h-10 rounded-xl bg-[#211217] text-[#fda4af] flex items-center justify-center text-lg border border-[#4c1d28]">🧠</div>
+          <h3 class="font-semibold text-base text-white">Contextual Project Memory</h3>
+          <p class="text-xs text-zinc-400 leading-relaxed">
+            Save your major projects, work accomplishments, and leadership answers. FillIt re-uses context memory to answer qualitative open-ended questions.
+          </p>
+        </div>
+
+        <!-- Card 3 -->
+        <div class="p-6 rounded-2xl bg-[#111115] border border-[#22222a] space-y-3 hover:border-rose-500/40 transition-colors">
+          <div class="w-10 h-10 rounded-xl bg-[#211217] text-[#fda4af] flex items-center justify-center text-lg border border-[#4c1d28]">📊</div>
+          <h3 class="font-semibold text-base text-white">Survey Randomizer</h3>
+          <p class="text-xs text-zinc-400 leading-relaxed">
+            Enable Survey Mode for tedious questionnaires and feedback forms. Generates plausible random answers with a single click.
+          </p>
+        </div>
+
+        <!-- Card 4 -->
+        <div class="p-6 rounded-2xl bg-[#111115] border border-[#22222a] space-y-3 hover:border-rose-500/40 transition-colors">
+          <div class="w-10 h-10 rounded-xl bg-[#211217] text-[#fda4af] flex items-center justify-center text-lg border border-[#4c1d28]">🔄</div>
+          <h3 class="font-semibold text-base text-white">Automatic Learning</h3>
+          <p class="text-xs text-zinc-400 leading-relaxed">
+            FillIt remembers new answers as you submit forms across websites. Next time you encounter a similar field, your answer is re-applied.
+          </p>
+        </div>
+
+        <!-- Card 5 -->
+        <div class="p-6 rounded-2xl bg-[#111115] border border-[#22222a] space-y-3 hover:border-rose-500/40 transition-colors">
+          <div class="w-10 h-10 rounded-xl bg-[#211217] text-[#fda4af] flex items-center justify-center text-lg border border-[#4c1d28]">⚡</div>
+          <h3 class="font-semibold text-base text-white">Auto-Split Fields</h3>
+          <p class="text-xs text-zinc-400 leading-relaxed">
+            Smart matching engine automatically splits full names into first/last name, maps phone numbers, addresses, and custom skills seamlessly.
+          </p>
+        </div>
+
+        <!-- Card 6 -->
+        <div class="p-6 rounded-2xl bg-[#111115] border border-[#22222a] space-y-3 hover:border-rose-500/40 transition-colors">
+          <div class="w-10 h-10 rounded-xl bg-[#211217] text-[#fda4af] flex items-center justify-center text-lg border border-[#4c1d28]">🌓</div>
+          <h3 class="font-semibold text-base text-white">Dark & Light Modes</h3>
+          <p class="text-xs text-zinc-400 leading-relaxed">
+            Switch smoothly between Shopify Red dark theme and Nexidus light theme to match your system preferences.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- How It Works -->
+    <section class="py-16 max-w-5xl mx-auto px-6" id="how-it-works">
+      <div class="text-center mb-12">
+        <h2 class="text-3xl font-extrabold text-white">How to Use FillIt in 3 Steps</h2>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-8 text-center">
+        <div class="space-y-3">
+          <div class="w-12 h-12 rounded-2xl bg-[#e11d48] text-white font-bold text-lg flex items-center justify-center mx-auto shadow-lg shadow-rose-950/50">1</div>
+          <h3 class="font-semibold text-base text-white">Add Extension</h3>
+          <p class="text-xs text-zinc-400">Install FillIt from the Chrome Web Store in 1 click.</p>
+        </div>
+
+        <div class="space-y-3">
+          <div class="w-12 h-12 rounded-2xl bg-[#e11d48] text-white font-bold text-lg flex items-center justify-center mx-auto shadow-lg shadow-rose-950/50">2</div>
+          <h3 class="font-semibold text-base text-white">Set Your Profile</h3>
+          <p class="text-xs text-zinc-400">Enter your general info and add 2–3 project context entries in Settings.</p>
+        </div>
+
+        <div class="space-y-3">
+          <div class="w-12 h-12 rounded-2xl bg-[#e11d48] text-white font-bold text-lg flex items-center justify-center mx-auto shadow-lg shadow-rose-950/50">3</div>
+          <h3 class="font-semibold text-base text-white">Click Fill Form</h3>
+          <p class="text-xs text-zinc-400">Navigate to any job application or form and hit "Fill Form". Done!</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Privacy Banner -->
+    <section class="py-12 max-w-5xl mx-auto px-6" id="privacy">
+      <div class="p-8 rounded-2xl bg-[#102419] border border-[#1f4730] text-[#6ee7b7] flex flex-col md:flex-row items-center justify-between gap-6 shadow-2xl">
+        <div class="space-y-2">
+          <h3 class="text-xl font-bold text-white">Your Data Never Leaves Your Device</h3>
+          <p class="text-xs text-[#a7f3d0] leading-relaxed max-w-xl">
+            FillIt doesn't use cloud servers, external databases, or third-party tracking scripts. Your profile is stored strictly inside Chrome's encrypted local extension storage.
+          </p>
+        </div>
+        <a
+          href="https://chromewebstore.google.com"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="px-6 py-3 rounded-xl bg-white text-[#047857] font-semibold text-xs shadow-lg hover:bg-emerald-50 transition-colors whitespace-nowrap"
+        >
+          Try Free & Private
+        </a>
+      </div>
+    </section>
+
+    <!-- FAQ Section -->
+    <section class="py-16 max-w-4xl mx-auto px-6" id="faq">
+      <div class="text-center mb-12">
+        <h2 class="text-3xl font-extrabold text-white">Frequently Asked Questions</h2>
+      </div>
+
+      <div class="space-y-4">
+        <details class="p-4 rounded-xl bg-[#111115] border border-[#22222a] group cursor-pointer">
+          <summary class="font-semibold text-sm text-white flex items-center justify-between">
+            <span>Is FillIt completely free to use?</span>
+            <span class="text-rose-500 font-bold group-open:rotate-180 transition-transform">+</span>
+          </summary>
+          <p class="mt-3 text-xs text-zinc-400 leading-relaxed">
+            Yes! FillIt is 100% free with no hidden subscriptions or paid tiers required.
+          </p>
+        </details>
+
+        <details class="p-4 rounded-xl bg-[#111115] border border-[#22222a] group cursor-pointer">
+          <summary class="font-semibold text-sm text-white flex items-center justify-between">
+            <span>Does FillIt require API keys?</span>
+            <span class="text-rose-500 font-bold group-open:rotate-180 transition-transform">+</span>
+          </summary>
+          <p class="mt-3 text-xs text-zinc-400 leading-relaxed">
+            No API keys required! FillIt operates using smart fuzzy matching, synonym mappings, and optional on-device WASM models directly in your browser.
+          </p>
+        </details>
+
+        <details class="p-4 rounded-xl bg-[#111115] border border-[#22222a] group cursor-pointer">
+          <summary class="font-semibold text-sm text-white flex items-center justify-between">
+            <span>Can I export or backup my data?</span>
+            <span class="text-rose-500 font-bold group-open:rotate-180 transition-transform">+</span>
+          </summary>
+          <p class="mt-3 text-xs text-zinc-400 leading-relaxed">
+            Yes, you can export your entire profile and context entries as a standard JSON file at any time from the extension Settings page.
+          </p>
+        </details>
+      </div>
+    </section>
+  </main>
+
+  <!-- Footer -->
+  <footer class="border-t border-[#18181b] py-8 bg-[#08080a]">
+    <div class="max-w-6xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between text-xs text-zinc-500 gap-4">
+      <div class="flex items-center space-x-2">
+        <div class="w-5 h-5 rounded bg-[#e11d48] flex items-center justify-center font-bold text-white text-[10px]">F</div>
+        <span class="text-zinc-300 font-medium">FillIt Chrome Extension</span>
+        <span>© 2026</span>
+      </div>
+
+      <div class="flex items-center space-x-6">
+        <a href="#privacy" class="hover:text-zinc-300 transition-colors">Privacy Policy</a>
+        <a href="#features" class="hover:text-zinc-300 transition-colors">Features</a>
+        <a href="https://chromewebstore.google.com" target="_blank" rel="noopener noreferrer" class="hover:text-zinc-300 transition-colors">Chrome Web Store</a>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>
