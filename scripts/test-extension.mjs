@@ -4,7 +4,7 @@
  */
 import puppeteer from "puppeteer";
 import { createServer } from "node:http";
-import { readFileSync, mkdtempSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";

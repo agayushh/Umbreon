@@ -8,7 +8,7 @@ import { pathToFileURL } from "node:url";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
-import { mkdtempSync, writeFileSync, readFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -346,9 +346,6 @@ storage.sync.userData = {
   phone: "555",
   city: "SF",
 };
-// force re-init
-formFiller.isInitialized = false;
-// can't access private — call detectForms which calls initialize
 const det = await formFiller.detectForms();
 check("formFiller.detectForms returns count", det.count >= 5, JSON.stringify(det.count));
 

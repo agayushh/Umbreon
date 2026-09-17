@@ -11,10 +11,7 @@
   ],
   "host_permissions": [
     "http://*/*",
-    "https://*/*",
-    "https://huggingface.co/*",
-    "https://cdn.jsdelivr.net/*",
-    "https://*.hf.co/*"
+    "https://*/*"
   ],
   "action": {
     "default_popup": "index.html"

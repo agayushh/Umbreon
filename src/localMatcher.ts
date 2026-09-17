@@ -444,37 +444,12 @@ class LocalMatcher {
     }
   }
 
-  setEnableLocalModels(enabled: boolean): void {
-    this.enableLocalModels = enabled;
-    if (!enabled) {
-      this.modelReady = false;
-      this.embeddingPipeline = null;
-      this.generatorPipeline = null;
-      this.generatorReady = false;
-      this.generatorFailed = false;
-      this.profileEmbeddings.clear();
-      this.contextEmbeddings.clear();
-    } else if (Object.keys(this.userData).length > 0) {
-      this.warmUpModel();
-    }
-  }
-
   getUserData(): UserData {
     return this.userData;
   }
 
   setSurveyMode(enabled: boolean): void {
     this.surveyMode = enabled;
-  }
-
-  getSurveyMode(): boolean {
-    return this.surveyMode;
-  }
-
-  getModelStatus(): "ready" | "loading" | "unavailable" {
-    if (this.modelReady) return "ready";
-    if (this.embeddingPipeline !== null) return "loading";
-    return "unavailable";
   }
 
   // ── Model loading ──────────────────────────────────────────────────

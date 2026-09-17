@@ -444,7 +444,7 @@ function looksLikeRole(line: string): boolean {
 
 function parseSkillsBlob(raw: string): string[] {
   const skills: string[] = [];
-  for (const item of raw.split(/[,•·|\/;\n\t]+/)) {
+  for (const item of raw.split(/[,•·|/;\n\t]+/)) {
     const skill = item.replace(/^[-*]\s*/, "").replace(/\s+/g, " ").trim();
     if (skill.length < 2 || skill.length > 40) continue;
     if (/experience|education|project|show all|endorsed|^skills$/i.test(skill)) continue;
@@ -621,18 +621,12 @@ export function parseResumeOrLinkedInText(text: string): ExtractionResult {
     sections.get("employment") ||
     "";
   if (!userData.currentRole && experienceText) {
-    const firstExpLine = experienceText
+    const maybeRole = experienceText
       .split("\n")
       .map((l) => l.trim())
-      .filter(Boolean)[0];
-    if (firstExpLine && (looksLikeRole(firstExpLine) || firstExpLine.length <= 80)) {
-      const maybeRole = experienceText
-        .split("\n")
-        .map((l) => l.trim())
-        .filter(Boolean)
-        .find((l) => looksLikeRole(l));
-      if (maybeRole) userData.currentRole = maybeRole.slice(0, 80);
-    }
+      .filter(Boolean)
+      .find((l) => looksLikeRole(l));
+    if (maybeRole) userData.currentRole = maybeRole.slice(0, 80);
   }
   const projectText = sections.get("projects") || sections.get("project") || "";
   const aboutText = sections.get("about") || sections.get("summary") || "";

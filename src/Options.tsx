@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import type { UserData, ContextEntry } from "./types";
+import type { UserData, ContextEntry, LearnedEntry } from "./types";
 import {
   parseResumeOrLinkedInText,
   parseImportedFile,
@@ -33,14 +33,6 @@ import {
   Check
 } from "lucide-react";
 
-interface LearnedEntry {
-  fieldLabel: string;
-  value: string;
-  domain: string;
-  timestamp: number;
-  source: string;
-}
-
 export default function Options() {
   const [userData, setUserData] = useState<UserData>({});
   const [isLoading, setIsLoading] = useState(false);
@@ -60,7 +52,6 @@ export default function Options() {
     description: "",
     category: "project" as ContextEntry["category"],
     skills: "",
-    impact: "",
   });
 
   // Resume & LinkedIn Extractor Modal State
@@ -324,7 +315,6 @@ export default function Options() {
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean),
-      impact: newContext.impact.trim() || undefined,
       timestamp: Date.now(),
     };
 
@@ -338,7 +328,6 @@ export default function Options() {
         description: "",
         category: "project",
         skills: "",
-        impact: "",
       });
       await loadContextEntries();
       setMessage("Context entry added");
@@ -368,7 +357,7 @@ export default function Options() {
     setLearnedLoading(true);
     try {
       const resp = await chrome.runtime.sendMessage({
-        action: "getLearnedHistory",
+        action: "getLearnedData",
       });
       if (resp?.success) setLearnedData(resp.data || {});
       else setLearnedData({});

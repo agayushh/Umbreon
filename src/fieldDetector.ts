@@ -25,7 +25,7 @@ const AUTOCOMPLETE_LABELS: Record<string, string> = {
   "additional-name": "middle name",
   "family-name": "last name",
   email: "email",
-  "username": "username",
+  username: "username",
   tel: "phone",
   "tel-national": "phone",
   "tel-local": "phone",
@@ -48,9 +48,6 @@ const AUTOCOMPLETE_LABELS: Record<string, string> = {
   "honorific-prefix": "prefix",
 };
 
-/** Track last readyState to avoid duplicate logs. */
-let lastReadyState = "";
-
 function queryAllDeep(root: ParentNode, selector: string): Element[] {
   const found: Element[] = [];
   const visit = (node: ParentNode) => {
@@ -68,11 +65,6 @@ export function detectFormFields(): FormField[] {
   const fields: FormField[] = [];
   const seen = new Set<Element>();
   const seenGroupNames = new Set<string>();
-  const readyState = document.readyState;
-  const wasReady = lastReadyState === readyState;
-  lastReadyState = readyState;
-
-  if (!wasReady) log.debug("Starting detection, readyState=" + readyState);
 
   const elements = queryAllDeep(
     document,

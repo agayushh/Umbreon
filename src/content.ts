@@ -67,19 +67,6 @@ if (!g.__fillitListenerRegistered) {
         });
       return true;
     }
-
-    if (message.action === "precompute") {
-      formFiller
-        .precompute()
-        .then((result) => {
-          sendResponse(result);
-        })
-        .catch((error) => {
-          log.error("Precompute error", error);
-          sendResponse({ success: false });
-        });
-      return true;
-    }
   });
 
   log.debug("Content script message listener ready");

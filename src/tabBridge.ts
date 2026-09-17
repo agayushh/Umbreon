@@ -26,7 +26,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 /** Resolve the CRXJS content-script loader path from the live manifest. */
-export function getContentScriptFiles(): string[] {
+function getContentScriptFiles(): string[] {
   const scripts = chrome.runtime.getManifest().content_scripts?.[0]?.js;
   return scripts?.length ? [...scripts] : [];
 }
@@ -36,7 +36,7 @@ export function getContentScriptFiles(): string[] {
  * CRXJS loaders only kick off an async import() and return immediately —
  * awaiting the module import ourselves guarantees the listener is registered.
  */
-export function getContentModuleUrl(): string | null {
+function getContentModuleUrl(): string | null {
   const resources =
     chrome.runtime.getManifest().web_accessible_resources ?? [];
   for (const entry of resources) {
@@ -59,13 +59,9 @@ export function getContentModuleUrl(): string | null {
   return null;
 }
 
-async function ping(tabId: number, frameId?: number): Promise<boolean> {
+async function ping(tabId: number): Promise<boolean> {
   try {
-    const res = await chrome.tabs.sendMessage(
-      tabId,
-      { action: "ping" },
-      frameId !== undefined ? { frameId } : undefined,
-    );
+    const res = await chrome.tabs.sendMessage(tabId, { action: "ping" });
     return Boolean(res?.ok);
   } catch {
     return false;
@@ -100,7 +96,7 @@ async function injectContentScripts(tabId: number): Promise<void> {
  * Ensure the content script is alive in the tab.
  * Injects (and awaits module evaluation) if the ping fails.
  */
-export async function ensureContentScript(tabId: number): Promise<void> {
+async function ensureContentScript(tabId: number): Promise<void> {
   if (await ping(tabId)) return;
 
   await injectContentScripts(tabId);

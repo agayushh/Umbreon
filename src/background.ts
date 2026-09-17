@@ -25,7 +25,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
 
   // Get learned data for display
-  if (msg.action === "getLearnedData" || msg.action === "getLearnedHistory") {
+  if (msg.action === "getLearnedData") {
     formHistoryService
       .getEntriesGroupedByDomain()
       .then((grouped) => {
@@ -47,20 +47,6 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       })
       .catch(() => {
         sendResponse({ success: true, count: 0 });
-      });
-    return true;
-  }
-
-  // Get profile suggestions from learned data
-  if (msg.action === "getProfileSuggestions") {
-    formHistoryService
-      .getProfileSuggestions()
-      .then((suggestions) => {
-        sendResponse({ success: true, suggestions });
-      })
-      .catch((err) => {
-        log.error("Failed to get profile suggestions", err);
-        sendResponse({ success: false, suggestions: [] });
       });
     return true;
   }
@@ -165,20 +151,6 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       })
       .catch((err) => {
         log.error("Failed to delete context entry", err);
-        sendResponse({ success: false });
-      });
-    return true;
-  }
-
-  // Clear all context entries
-  if (msg.action === "clearContextEntries") {
-    formHistoryService
-      .clearContextEntries()
-      .then(() => {
-        sendResponse({ success: true });
-      })
-      .catch((err) => {
-        log.error("Failed to clear context entries", err);
         sendResponse({ success: false });
       });
     return true;
