@@ -63,6 +63,24 @@ export interface FormField {
   placeholder: string;
   label: string;
   required: boolean;
+  autocomplete?: string;
+}
+
+export interface LearnedEntry {
+  fieldLabel: string;
+  value: string;
+  domain: string;
+  timestamp: number;
+  source: "submission" | "manual";
+}
+
+export interface FillItBackup {
+  version?: string;
+  exportedAt?: string;
+  userData?: Partial<UserData>;
+  contextEntries?: ContextEntry[];
+  learnedData?: Record<string, LearnedEntry[]>;
+  formHistory?: { entries?: LearnedEntry[] };
 }
 
 export interface FieldMatch {
@@ -96,14 +114,6 @@ export interface FormContext {
   domain: string;
   pageTitle: string;
   confidence: number;
-}
-
-export interface LearnedEntry {
-  fieldLabel: string;
-  value: string;
-  domain: string;
-  timestamp: number;
-  source: "submission" | "manual";
 }
 
 export interface FormHistory {

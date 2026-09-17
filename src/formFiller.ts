@@ -2,6 +2,7 @@ import { localMatcher } from "./localMatcher";
 import { detectFormContext } from "./contextDetector";
 import { detectFormFields } from "./fieldDetector";
 import { createLogger } from "./logger";
+import { mergeUserData } from "./profileStore";
 
 const log = createLogger("FormFiller");
 
@@ -159,13 +160,8 @@ class FormFiller {
 
   async updateUserData(data: Record<string, unknown>): Promise<void> {
     await this.initialize();
-    localMatcher.setUserData({
-      ...localMatcher.getUserData(),
-      ...data,
-    } as import("./types").UserData);
-    await chrome.storage.sync.set({
-      userData: { ...localMatcher.getUserData(), ...data },
-    });
+    const merged = await mergeUserData(data as import("./types").UserData);
+    localMatcher.setUserData(merged);
   }
 
   getUserData() {

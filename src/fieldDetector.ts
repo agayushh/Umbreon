@@ -1,33 +1,72 @@
-/** DOM field detection extracted from aiService — keeps that file focused on AI logic. */
+/** DOM field detection — finds fillable inputs across documents and shadow roots. */
 
 import { createLogger } from "./logger";
 import type { FormField } from "./types";
 
 const log = createLogger("FieldDetector");
 
-/** CSS selectors for standard form inputs. */
-const INPUT_SELECTORS = [
-  'input[type="text"]',
-  'input[type="email"]',
-  'input[type="tel"]',
-  'input[type="url"]',
-  'input[type="number"]',
-  'input[type="date"]',
-  "textarea",
-  "select",
-];
-
 /** Fields we should never attempt to auto-fill. */
-const SKIP_TYPES = new Set(["password", "hidden", "file", "submit", "button"]);
+const SKIP_TYPES = new Set([
+  "password",
+  "hidden",
+  "file",
+  "submit",
+  "button",
+  "image",
+  "reset",
+  "color",
+]);
 const SKIP_NAME_PATTERNS =
   /captcha|recaptcha|g-recaptcha|h-captcha|csrf|token|nonce/i;
+
+const AUTOCOMPLETE_LABELS: Record<string, string> = {
+  name: "full name",
+  "given-name": "first name",
+  "additional-name": "middle name",
+  "family-name": "last name",
+  email: "email",
+  "username": "username",
+  tel: "phone",
+  "tel-national": "phone",
+  "tel-local": "phone",
+  "street-address": "street address",
+  "address-line1": "street address",
+  "address-line2": "address line 2",
+  "address-level2": "city",
+  "address-level1": "state",
+  "postal-code": "zip code",
+  country: "country",
+  "country-name": "country",
+  url: "website",
+  organization: "company",
+  "organization-title": "current role",
+  bday: "date of birth",
+  "bday-day": "birth day",
+  "bday-month": "birth month",
+  "bday-year": "birth year",
+  sex: "gender",
+  "honorific-prefix": "prefix",
+};
 
 /** Track last readyState to avoid duplicate logs. */
 let lastReadyState = "";
 
+function queryAllDeep(root: ParentNode, selector: string): Element[] {
+  const found: Element[] = [];
+  const visit = (node: ParentNode) => {
+    node.querySelectorAll(selector).forEach((el) => found.push(el));
+    node.querySelectorAll("*").forEach((el) => {
+      if (el.shadowRoot) visit(el.shadowRoot);
+    });
+  };
+  visit(root);
+  return found;
+}
+
 /** Detect all fillable form fields on the current page. */
 export function detectFormFields(): FormField[] {
   const fields: FormField[] = [];
+  const seen = new Set<Element>();
   const seenGroupNames = new Set<string>();
   const readyState = document.readyState;
   const wasReady = lastReadyState === readyState;
@@ -35,90 +74,44 @@ export function detectFormFields(): FormField[] {
 
   if (!wasReady) log.debug("Starting detection, readyState=" + readyState);
 
-  // Standard inputs
-  INPUT_SELECTORS.forEach((selector) => {
-    const elements = document.querySelectorAll(selector);
-    elements.forEach((element) => {
-      const input = element as
-        | HTMLInputElement
-        | HTMLTextAreaElement
-        | HTMLSelectElement;
-      if (shouldSkip(input)) return;
-
-      fields.push(buildField(input));
-    });
-  });
-
-  // Radio groups — represent each group as one field with a representative element
-  const radioGroups = document.querySelectorAll<HTMLInputElement>(
-    'input[type="radio"]',
+  const elements = queryAllDeep(
+    document,
+    'input, textarea, select, [contenteditable="true"], [role="textbox"]',
   );
-  const radioGroupMap = new Map<string, HTMLInputElement>();
-  radioGroups.forEach((radio) => {
-    if (shouldSkip(radio)) return;
-    const name = radio.name || `_unnamed_${radioGroupMap.size}`;
-    if (!radioGroupMap.has(name)) {
-      radioGroupMap.set(name, radio);
+
+  for (const element of elements) {
+    if (seen.has(element)) continue;
+    seen.add(element);
+    if (shouldSkip(element as HTMLElement)) continue;
+
+    const input = element as HTMLInputElement;
+    const type = (
+      input.type ||
+      element.getAttribute("type") ||
+      element.getAttribute("role") ||
+      element.tagName.toLowerCase()
+    ).toLowerCase();
+
+    if (type === "radio") {
+      const name = input.name || `_unnamed_${seenGroupNames.size}`;
+      const groupKey = `radio:${name}`;
+      if (seenGroupNames.has(groupKey)) continue;
+      seenGroupNames.add(groupKey);
+      fields.push(buildField(element as HTMLElement, "radio"));
+      continue;
     }
-  });
-  radioGroupMap.forEach((radio, name) => {
-    if (seenGroupNames.has(name)) return;
-    seenGroupNames.add(name);
-    fields.push({
-      element: radio,
-      type: "radio",
-      name,
-      id: radio.id || "",
-      placeholder: "",
-      label: getFieldLabel(radio),
-      required: radio.required || false,
-    });
-  });
 
-  // Checkbox groups — represent each group as one field
-  const checkboxGroups = document.querySelectorAll<HTMLInputElement>(
-    'input[type="checkbox"]',
-  );
-  const checkboxGroupMap = new Map<string, HTMLInputElement>();
-  checkboxGroups.forEach((cb) => {
-    if (shouldSkip(cb)) return;
-    const name = cb.name || `_unnamed_cb_${checkboxGroupMap.size}`;
-    if (!checkboxGroupMap.has(name)) {
-      checkboxGroupMap.set(name, cb);
+    if (type === "checkbox") {
+      const name = input.name || `_unnamed_cb_${seenGroupNames.size}`;
+      const groupKey = `cb:${name}`;
+      if (seenGroupNames.has(groupKey)) continue;
+      seenGroupNames.add(groupKey);
+      fields.push(buildField(element as HTMLElement, "checkbox"));
+      continue;
     }
-  });
-  checkboxGroupMap.forEach((cb, name) => {
-    if (seenGroupNames.has(name)) return;
-    seenGroupNames.add(name);
-    fields.push({
-      element: cb,
-      type: "checkbox",
-      name,
-      id: cb.id || "",
-      placeholder: "",
-      label: getFieldLabel(cb),
-      required: cb.required || false,
-    });
-  });
 
-  // Contenteditable / ARIA textboxes (Google Forms, Indeed, etc.)
-  const editableCandidates = document.querySelectorAll<HTMLElement>(
-    '[contenteditable="true"], div[role="textbox"], textarea[aria-label], input[aria-label]',
-  );
-  editableCandidates.forEach((el) => {
-    if (fields.some((f) => f.element === el)) return;
-    if (shouldSkip(el)) return;
-
-    fields.push({
-      element: el,
-      type: el.getAttribute("role") || "textbox",
-      name: el.getAttribute("name") || "",
-      id: el.id || "",
-      placeholder: el.getAttribute("placeholder") || "",
-      label: getFieldLabel(el),
-      required: el.getAttribute("aria-required") === "true",
-    });
-  });
+    fields.push(buildField(element as HTMLElement, type));
+  }
 
   log.debug(`Detected ${fields.length} fillable fields`);
   return fields;
@@ -129,7 +122,6 @@ export function detectFormFields(): FormField[] {
 function shouldSkip(el: HTMLElement): boolean {
   const input = el as HTMLInputElement;
   if (input.disabled) return true;
-  // Only treat real form controls as readOnly (contenteditable has no readOnly)
   if (
     (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) &&
     el.readOnly
@@ -137,46 +129,65 @@ function shouldSkip(el: HTMLElement): boolean {
     return true;
   }
   if (input.type && SKIP_TYPES.has(input.type)) return true;
-  // Skip inputs that are not visible (common for honeypots / closed dialogs)
-  if (el instanceof HTMLElement) {
+
+  if (el.getAttribute("aria-hidden") === "true") return true;
+
+  try {
     const style = window.getComputedStyle(el);
-    if (
-      style.display === "none" ||
-      style.visibility === "hidden" ||
-      (el as HTMLInputElement).type === "hidden"
-    ) {
+    if (style.display === "none" || style.visibility === "hidden") {
       return true;
     }
+  } catch {
+    /* jsdom / detached */
   }
+
   const identifier = `${input.name || ""} ${input.id || ""} ${typeof input.className === "string" ? input.className : ""}`;
   if (SKIP_NAME_PATTERNS.test(identifier)) return true;
   return false;
 }
 
-function buildField(
-  input: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement,
-): FormField {
+function buildField(element: HTMLElement, type: string): FormField {
+  const input = element as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
   return {
-    element: input,
-    type: input.type || input.tagName.toLowerCase(),
-    name: input.name || "",
-    id: input.id || "",
+    element,
+    type,
+    name: (input as HTMLInputElement).name || element.getAttribute("name") || "",
+    id: element.id || "",
     placeholder:
-      (input as HTMLInputElement | HTMLTextAreaElement).placeholder || "",
-    label: getFieldLabel(input),
-    required: input.required || false,
+      (input as HTMLInputElement | HTMLTextAreaElement).placeholder ||
+      element.getAttribute("placeholder") ||
+      "",
+    label: getFieldLabel(element),
+    required:
+      (input as HTMLInputElement).required ||
+      element.getAttribute("aria-required") === "true",
+    autocomplete: (input as HTMLInputElement).autocomplete || element.getAttribute("autocomplete") || "",
   };
 }
 
 /** Prefer human-readable labels; reject pure machine names when better text exists. */
 function isWeakLabel(text: string): boolean {
   if (!text) return true;
-  // snake_case / camelCase / uuid-like identifiers are weak alone
   if (/^[a-z0-9]+([._-][a-z0-9]+)+$/i.test(text) && !/\s/.test(text)) {
     return true;
   }
   if (text.length <= 2) return true;
   return false;
+}
+
+function autocompleteToLabel(value: string): string {
+  const token = value.trim().split(/\s+/).pop() || "";
+  return AUTOCOMPLETE_LABELS[token] || "";
+}
+
+function humanizeIdentifier(value: string): string {
+  if (!value) return "";
+  return value
+    .replace(/\[\]$/g, "")
+    .replace(/^[A-Za-z0-9_]+\[([A-Za-z0-9_]+)\]$/, "$1")
+    .replace(/[._-]+/g, " ")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .trim();
 }
 
 /** Try multiple heuristics to find a human-readable label for a field. */
@@ -207,11 +218,10 @@ export function getFieldLabel(element: HTMLElement): string {
     () => {
       const wrap = element.closest("label");
       if (!wrap) return "";
-      // For radio/checkbox, option label text is weak for matching profile keys
       const input = element as HTMLInputElement;
       if (input.type === "radio" || input.type === "checkbox") {
         const legend = element.closest("fieldset")?.querySelector("legend");
-        if (legend) return ""; // already handled above
+        if (legend) return "";
       }
       const clone = wrap.cloneNode(true) as HTMLElement;
       clone.querySelectorAll("input, select, textarea").forEach((n) => n.remove());
@@ -222,10 +232,11 @@ export function getFieldLabel(element: HTMLElement): string {
       const legend = element.closest("fieldset")?.querySelector("legend");
       return legend?.textContent?.trim() || "";
     },
-    // Nearby label in closest container
+    // Nearby label in closest container (not the whole form)
     () => {
       const parent = element.closest("div, p, td, th, li, section");
-      const label = parent?.querySelector("label");
+      if (!parent || parent.tagName === "FORM") return "";
+      const label = parent.querySelector("label");
       return label?.textContent?.trim() || "";
     },
     // aria-labelledby
@@ -238,15 +249,22 @@ export function getFieldLabel(element: HTMLElement): string {
         .filter(Boolean)
         .join(" ");
     },
-    // Previous sibling text
+    // Immediate previous sibling text (not a previous input)
     () => {
-      const prev = element.previousElementSibling;
-      return prev?.textContent?.trim() || "";
+      const prev = element.previousElementSibling as HTMLElement | null;
+      if (!prev) return "";
+      if (/^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(prev.tagName)) return "";
+      return prev.textContent?.trim() || "";
     },
     // aria-label
     () => element.getAttribute("aria-label") || "",
     // placeholder (often human-readable)
     () => (element as HTMLInputElement | HTMLTextAreaElement).placeholder || "",
+    // autocomplete (given-name, email, ...)
+    () => autocompleteToLabel(element.getAttribute("autocomplete") || ""),
+    // Machine name/id humanized — better than stealing another field's heading
+    () => humanizeIdentifier((element as HTMLInputElement).name || ""),
+    () => humanizeIdentifier(element.id || ""),
     // Nearby headings (Google Forms / Indeed)
     () => getNearbyPromptText(element),
     // name / id last (machine identifiers)
@@ -266,44 +284,31 @@ export function getFieldLabel(element: HTMLElement): string {
 
 /** Walk nearby DOM to find a visible prompt/heading for a field. */
 function getNearbyPromptText(element: HTMLElement): string {
-  const container = element.closest("div, section, form") as HTMLElement | null;
-  if (!container) return "";
+  const promptSelector =
+    '[role="heading"], h1, h2, h3, h4, h5, h6, legend, label, p';
 
-  const CANDIDATES = [
-    '[role="heading"]',
-    "h1",
-    "h2",
-    "h3",
-    "h4",
-    "h5",
-    "h6",
-    "legend",
-    "label",
-    "p",
-  ];
-
-  // Previous-sibling crawl (up to 5 hops)
-  let cursor: Element | null = element;
-  for (let i = 0; i < 5 && cursor; i++) {
-    const prev = cursor.previousElementSibling as HTMLElement | null;
-    if (prev) {
-      for (const sel of CANDIDATES) {
-        const node = prev.matches(sel) ? prev : prev.querySelector(sel);
-        const txt = node?.textContent?.trim();
-        if (txt) return txt;
-      }
+  const fromNode = (node: Element | null): string => {
+    if (!node || /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(node.tagName)) return "";
+    if ((node as HTMLElement).matches?.(promptSelector)) {
+      const txt = node.textContent?.trim() || "";
+      if (txt && txt.length < 140) return txt;
     }
-    cursor = prev;
+    const nested = node.querySelector(promptSelector);
+    const txt = nested?.textContent?.trim() || "";
+    return txt.length > 0 && txt.length < 140 ? txt : "";
+  };
+
+  let prev = element.previousElementSibling;
+  for (let i = 0; i < 2 && prev; i++) {
+    const txt = fromNode(prev);
+    if (txt) return txt;
+    prev = prev.previousElementSibling;
   }
 
-  // Parent crawl (up to 4 levels)
   let parent: HTMLElement | null = element.parentElement;
-  for (let d = 0; d < 4 && parent; d++) {
-    for (const sel of CANDIDATES) {
-      const node = parent.matches(sel) ? parent : parent.querySelector(sel);
-      const txt = node?.textContent?.trim();
-      if (txt) return txt;
-    }
+  for (let d = 0; d < 3 && parent && parent.tagName !== "FORM" && parent.tagName !== "BODY"; d++) {
+    const txt = fromNode(parent.previousElementSibling);
+    if (txt) return txt;
     parent = parent.parentElement;
   }
 

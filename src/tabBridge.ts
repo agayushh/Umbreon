@@ -13,9 +13,10 @@ const RESTRICTED_PREFIXES = [
   "https://chromewebstore.google.com",
 ];
 
+const FIELD_PROBE_SELECTOR =
+  'input:not([type="hidden"]):not([type="password"]):not([type="file"]):not([type="submit"]):not([type="button"]):not([type="image"]):not([type="reset"]), textarea, select, [contenteditable="true"], [role="textbox"]';
+
 export function isRestrictedUrl(url: string | undefined): boolean {
-  // Empty/undefined can happen for some chrome tabs before URL resolves —
-  // allow attempt; injection will fail cleanly if truly restricted.
   if (!url) return false;
   return RESTRICTED_PREFIXES.some((p) => url.startsWith(p));
 }
@@ -50,7 +51,6 @@ export function getContentModuleUrl(): string | null {
           : [];
 
     for (const res of files) {
-      // Match hashed content bundle, skip the loader
       if (/content\.ts-[^/]+\.js$/.test(res) && !res.includes("loader")) {
         return chrome.runtime.getURL(res);
       }
@@ -59,13 +59,41 @@ export function getContentModuleUrl(): string | null {
   return null;
 }
 
-async function ping(tabId: number): Promise<boolean> {
+async function ping(tabId: number, frameId?: number): Promise<boolean> {
   try {
-    const res = await chrome.tabs.sendMessage(tabId, { action: "ping" });
+    const res = await chrome.tabs.sendMessage(
+      tabId,
+      { action: "ping" },
+      frameId !== undefined ? { frameId } : undefined,
+    );
     return Boolean(res?.ok);
   } catch {
     return false;
   }
+}
+
+async function injectContentScripts(tabId: number): Promise<void> {
+  const moduleUrl = getContentModuleUrl();
+  if (moduleUrl) {
+    await chrome.scripting.executeScript({
+      target: { tabId, allFrames: true },
+      world: "ISOLATED",
+      func: async (url: string) => {
+        await import(/* @vite-ignore */ url);
+      },
+      args: [moduleUrl],
+    });
+    return;
+  }
+
+  const files = getContentScriptFiles();
+  if (!files.length) {
+    throw new Error("Could not resolve content script from manifest");
+  }
+  await chrome.scripting.executeScript({
+    target: { tabId, allFrames: true },
+    files,
+  });
 }
 
 /**
@@ -75,30 +103,8 @@ async function ping(tabId: number): Promise<boolean> {
 export async function ensureContentScript(tabId: number): Promise<void> {
   if (await ping(tabId)) return;
 
-  const moduleUrl = getContentModuleUrl();
-  if (moduleUrl) {
-    // Inject by awaiting dynamic import — Chrome waits for returned promises.
-    // This avoids the CRXJS loader race (loader returns before import finishes).
-    await chrome.scripting.executeScript({
-      target: { tabId },
-      world: "ISOLATED",
-      func: async (url: string) => {
-        await import(/* @vite-ignore */ url);
-      },
-      args: [moduleUrl],
-    });
-  } else {
-    const files = getContentScriptFiles();
-    if (!files.length) {
-      throw new Error("Could not resolve content script from manifest");
-    }
-    await chrome.scripting.executeScript({
-      target: { tabId },
-      files,
-    });
-  }
+  await injectContentScripts(tabId);
 
-  // Poll until the listener is ready (module side-effects registered).
   for (let attempt = 0; attempt < 15; attempt++) {
     await sleep(50 + attempt * 40);
     if (await ping(tabId)) return;
@@ -109,11 +115,143 @@ export async function ensureContentScript(tabId: number): Promise<void> {
   );
 }
 
+async function frameIdsWithFields(tabId: number): Promise<number[]> {
+  try {
+    const probe = await chrome.scripting.executeScript({
+      target: { tabId, allFrames: true },
+      func: (selector: string) => {
+        try {
+          return document.querySelectorAll(selector).length;
+        } catch {
+          return 0;
+        }
+      },
+      args: [FIELD_PROBE_SELECTOR],
+    });
+    const ids = probe
+      .filter((row) => typeof row.frameId === "number" && Number(row.result) > 0)
+      .map((row) => row.frameId as number);
+    if (ids.length) return ids;
+  } catch {
+    /* scripting can fail on restricted frames */
+  }
+  return [0];
+}
+
+type DetectFormsResponse = {
+  count: number;
+  fields: Array<{
+    type: string;
+    name: string;
+    label: string;
+    placeholder: string;
+    required: boolean;
+  }>;
+};
+
+type FillFormResponse = {
+  success: boolean;
+  message: string;
+  stats?: {
+    filled?: number;
+    total?: number;
+    errors?: string[];
+    matches?: Array<{ value: string; confidence: number; method: string }>;
+    unfilled?: Array<{ label: string; method: string; fieldIndex: number }>;
+    suggestedProfileUpdates?: Array<{ key: string; label: string; value: string }>;
+  };
+};
+
+async function sendToFrame(
+  tabId: number,
+  frameId: number,
+  message: Record<string, unknown>,
+): Promise<unknown> {
+  return chrome.tabs.sendMessage(tabId, message, { frameId });
+}
+
 /** Send a message to the tab's content script, injecting first if needed. */
 export async function sendToTab<T = unknown>(
   tabId: number,
   message: Record<string, unknown>,
 ): Promise<T> {
   await ensureContentScript(tabId);
+
+  const action = String(message.action || "");
+  if (action === "detectForms" || action === "fillForm" || action === "fillSingleField") {
+    const frameIds = await frameIdsWithFields(tabId);
+
+    if (action === "detectForms") {
+      const merged: DetectFormsResponse = { count: 0, fields: [] };
+      for (const frameId of frameIds) {
+        try {
+          const res = (await sendToFrame(tabId, frameId, message)) as DetectFormsResponse;
+          if (res?.fields?.length) {
+            merged.fields.push(...res.fields);
+            merged.count += res.count || res.fields.length;
+          } else if (res?.count) {
+            merged.count += res.count;
+          }
+        } catch {
+          /* frame gone */
+        }
+      }
+      return merged as T;
+    }
+
+    if (action === "fillForm") {
+      let filled = 0;
+      let total = 0;
+      const errors: string[] = [];
+      const matches: NonNullable<FillFormResponse["stats"]>["matches"] = [];
+      const unfilled: NonNullable<FillFormResponse["stats"]>["unfilled"] = [];
+      const suggested: NonNullable<FillFormResponse["stats"]>["suggestedProfileUpdates"] = [];
+      let anySuccess = false;
+      let lastMessage = "No forms found on this page";
+
+      for (const frameId of frameIds) {
+        try {
+          const res = (await sendToFrame(tabId, frameId, message)) as FillFormResponse;
+          if (!res) continue;
+          if (res.success) anySuccess = true;
+          lastMessage = res.message || lastMessage;
+          filled += res.stats?.filled || 0;
+          total += res.stats?.total || 0;
+          if (res.stats?.errors) errors.push(...res.stats.errors);
+          if (res.stats?.matches) matches.push(...res.stats.matches);
+          if (res.stats?.unfilled) unfilled.push(...res.stats.unfilled);
+          if (res.stats?.suggestedProfileUpdates) {
+            suggested.push(...res.stats.suggestedProfileUpdates);
+          }
+        } catch {
+          /* frame gone */
+        }
+      }
+
+      const success = anySuccess || filled > 0;
+      const messageText = total
+        ? `Successfully filled ${filled} out of ${total} fields`
+        : lastMessage;
+
+      return {
+        success,
+        message: success ? messageText : lastMessage,
+        stats: { filled, total, errors, matches, unfilled, suggestedProfileUpdates: suggested },
+      } as T;
+    }
+
+    if (action === "fillSingleField") {
+      for (const frameId of frameIds) {
+        try {
+          const res = (await sendToFrame(tabId, frameId, message)) as { success?: boolean };
+          if (res?.success) return res as T;
+        } catch {
+          /* try next frame */
+        }
+      }
+      return { success: false } as T;
+    }
+  }
+
   return (await chrome.tabs.sendMessage(tabId, message)) as T;
 }

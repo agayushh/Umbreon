@@ -2,6 +2,7 @@
 
 import { detectFormContext } from "./contextDetector";
 import { formHistoryService } from "./formHistory";
+import { loadUserData } from "./profileStore";
 import type {
   UserData,
   FormField,
@@ -12,6 +13,26 @@ import type {
 } from "./types";
 import { createLogger } from "./logger";
 import { getTransformersPipeline } from "./transformersEnv";
+
+const AUTOCOMPLETE_KEY: Record<string, keyof UserData> = {
+  name: "name",
+  "given-name": "firstName",
+  "family-name": "lastName",
+  email: "email",
+  tel: "phone",
+  "tel-national": "phone",
+  "tel-local": "phone",
+  "street-address": "address",
+  "address-line1": "address",
+  "address-level2": "city",
+  "address-level1": "state",
+  "postal-code": "zipCode",
+  country: "country",
+  "country-name": "country",
+  url: "portfolio",
+  "organization-title": "currentRole",
+  bday: "dateOfBirth",
+};
 
 const log = createLogger("LocalMatcher");
 
@@ -385,12 +406,11 @@ class LocalMatcher {
   private contextEmbeddings: Map<string, number[]> = new Map();
 
   async initialize(): Promise<void> {
+    this.userData = await loadUserData();
     const result = await chrome.storage.sync.get([
-      "userData",
       "surveyMode",
       "enableLocalModels",
     ]);
-    this.userData = result.userData || {};
     this.surveyMode = result.surveyMode || false;
     this.enableLocalModels = result.enableLocalModels === true;
 
@@ -636,6 +656,9 @@ class LocalMatcher {
   ): Promise<FieldMatch> {
     // Use human-readable label only — joining entry.123 IDs breaks exact matches
     // and lets fuzzy wrongly map every "*name*" field to firstName.
+    const autocompleteMatch = this.matchAutocomplete(field);
+    if (autocompleteMatch) return autocompleteMatch;
+
     const matchText = this.getMatchText(field);
 
     if (!matchText) {
@@ -873,6 +896,27 @@ Answer:`;
     return null;
   }
 
+  /** Map HTML autocomplete tokens (given-name, email, ...) straight to profile keys. */
+  private matchAutocomplete(field: FormField): FieldMatch | null {
+    const raw = (field.autocomplete || "").trim().toLowerCase();
+    if (!raw || raw === "off" || raw === "on") return null;
+    const token = raw.split(/\s+/).pop() || "";
+    const key = AUTOCOMPLETE_KEY[token];
+    if (!key) return null;
+    const value = this.formatProfileValue(String(key), this.userData[key]);
+    if (!value) return null;
+    return { value, confidence: 0.97, method: "synonym" };
+  }
+
+  private humanizeIdentifier(value: string): string {
+    return value
+      .replace(/\[\]$/g, "")
+      .replace(/^[A-Za-z0-9_]+\[([A-Za-z0-9_]+)\]$/, "$1")
+      .replace(/[._-]+/g, " ")
+      .replace(/([a-z])([A-Z])/g, "$1 $2")
+      .trim();
+  }
+
   /** Drop Google Forms entry.123 / uuid-like tokens & generic placeholders like "Your answer" that break exact matching. */
   private getMatchText(field: FormField): string {
     const isMachine = (s: string) =>
@@ -886,35 +930,20 @@ Answer:`;
         s.trim(),
       );
 
-    // Prefer human label first if it's clean and not generic
-    if (
-      field.label &&
-      !isMachine(field.label) &&
-      !isGenericPlaceholder(field.label)
-    ) {
-      return field.label.trim();
-    }
-
-    if (
-      field.placeholder &&
-      !isMachine(field.placeholder) &&
-      !isGenericPlaceholder(field.placeholder)
-    ) {
-      return field.placeholder.trim();
-    }
-
-    const human = [field.label, field.placeholder, field.name, field.id]
+    const candidates = [
+      field.label,
+      field.placeholder,
+      this.humanizeIdentifier(field.name || ""),
+      this.humanizeIdentifier(field.id || ""),
+    ]
       .map((s) => (s || "").trim())
-      .filter((s) => s && !isMachine(s) && !isGenericPlaceholder(s));
+      .filter(Boolean);
 
-    if (human.length > 0) {
-      return human[0];
+    for (const text of candidates) {
+      if (!isMachine(text) && !isGenericPlaceholder(text)) return text;
     }
 
-    return [field.label, field.placeholder, field.name, field.id]
-      .filter(Boolean)
-      .join(" ")
-      .trim();
+    return candidates.join(" ").trim();
   }
 
   // ── Step 1: Exact synonym match ────────────────────────────────────
@@ -1518,15 +1547,32 @@ Answer:`;
     el: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement,
     value: string,
   ): void {
-    const proto = Object.getPrototypeOf(el) as object;
+    const proto =
+      el instanceof HTMLTextAreaElement
+        ? HTMLTextAreaElement.prototype
+        : el instanceof HTMLSelectElement
+          ? HTMLSelectElement.prototype
+          : HTMLInputElement.prototype;
     const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
     if (setter) {
       setter.call(el, value);
     } else {
       el.value = value;
     }
-    el.dispatchEvent(new Event("input", { bubbles: true }));
-    el.dispatchEvent(new Event("change", { bubbles: true }));
+    el.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
+    el.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
+    try {
+      el.dispatchEvent(
+        new InputEvent("input", {
+          bubbles: true,
+          composed: true,
+          data: value,
+          inputType: "insertText",
+        }),
+      );
+    } catch {
+      /* jsdom / older engines */
+    }
   }
 
   /** Set checkbox/radio checked so React controlled inputs see the change. */
@@ -1715,14 +1761,14 @@ Answer:`;
 
   async matchAll(fields: FormField[]): Promise<FillResult> {
     try {
+      const stored = await loadUserData();
+      if (Object.keys(stored).length > 0) {
+        this.userData = { ...this.userData, ...stored };
+      }
       const syncResult = await chrome.storage.sync.get([
-        "userData",
         "surveyMode",
         "enableLocalModels",
       ]);
-      if (syncResult.userData) {
-        this.userData = { ...this.userData, ...syncResult.userData };
-      }
       if (syncResult.surveyMode !== undefined) {
         this.surveyMode = syncResult.surveyMode;
       }

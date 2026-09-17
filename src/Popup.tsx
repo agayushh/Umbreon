@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { isRestrictedUrl, sendToTab } from "./tabBridge";
+import { mergeUserData } from "./profileStore";
 import {
   Settings,
   RefreshCw,
@@ -237,12 +238,7 @@ export default function Popup() {
     suggested.forEach((s) => {
       if (!sensitive.includes(s.key)) data[s.key] = s.value;
     });
-    await chrome.storage.sync.set({
-      userData: {
-        ...(await chrome.storage.sync.get(["userData"])).userData,
-        ...data,
-      },
-    });
+    await mergeUserData(data);
     await chrome.storage.sync.set({ sensitiveKeys: sensitive });
     setMessage("Profile updated");
     setTimeout(() => setMessage(""), 3000);

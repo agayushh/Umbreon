@@ -25,7 +25,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
 
   // Get learned data for display
-  if (msg.action === "getLearnedData") {
+  if (msg.action === "getLearnedData" || msg.action === "getLearnedHistory") {
     formHistoryService
       .getEntriesGroupedByDomain()
       .then((grouped) => {
@@ -108,6 +108,20 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       .catch((err) => {
         log.error("Failed to clear history", err);
         sendResponse({ success: false });
+      });
+    return true;
+  }
+
+  // Import learned history from JSON backup
+  if (msg.action === "importLearnedData") {
+    formHistoryService
+      .importLearnedData(msg.data)
+      .then((count) => {
+        sendResponse({ success: true, count });
+      })
+      .catch((err) => {
+        log.error("Failed to import learned data", err);
+        sendResponse({ success: false, count: 0 });
       });
     return true;
   }

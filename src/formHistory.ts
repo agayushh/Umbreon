@@ -2,6 +2,7 @@
 
 import { createLogger } from "./logger";
 import type { LearnedEntry, FormHistory, UserData, ContextEntry } from "./types";
+import { mergeUserData, loadUserData } from "./profileStore";
 
 const log = createLogger("FormHistory");
 const STORAGE_KEY = "formHistory";
@@ -120,8 +121,7 @@ class FormHistoryService {
     Array<{ key: string; value: string; domain: string }>
   > {
     await this.initialize();
-    const result = await chrome.storage.sync.get(["userData"]);
-    const userData: UserData = result.userData || {};
+    const userData: UserData = await loadUserData();
 
     const suggestions: Array<{ key: string; value: string; domain: string }> =
       [];
@@ -154,10 +154,7 @@ class FormHistoryService {
 
   /** Merge selected keys from learned data into the user profile. */
   async mergeToProfile(updates: Record<string, string>): Promise<void> {
-    const result = await chrome.storage.sync.get(["userData"]);
-    const userData: UserData = result.userData || {};
-    const merged = { ...userData, ...updates };
-    await chrome.storage.sync.set({ userData: merged });
+    await mergeUserData(updates);
     log.debug("Merged learned data into profile", Object.keys(updates));
   }
 
@@ -175,6 +172,37 @@ class FormHistoryService {
     this.history = { entries: [], profileUpdates: {} };
     await this.persist();
     log.debug("Cleared all form history");
+  }
+
+  /** Import learned entries from a JSON backup (grouped by domain or flat list). */
+  async importLearnedData(
+    data: Record<string, LearnedEntry[]> | { entries?: LearnedEntry[] },
+  ): Promise<number> {
+    await this.initialize();
+    let imported = 0;
+
+    const push = async (domain: string, fieldLabel: string, value: string) => {
+      if (!domain || !fieldLabel || !value) return;
+      await this.recordSubmission(domain, [
+        { label: fieldLabel, value },
+      ]);
+      imported++;
+    };
+
+    if ("entries" in data && Array.isArray(data.entries)) {
+      for (const entry of data.entries) {
+        await push(entry.domain, entry.fieldLabel, entry.value);
+      }
+      return imported;
+    }
+
+    for (const [domain, entries] of Object.entries(data)) {
+      if (!Array.isArray(entries)) continue;
+      for (const entry of entries) {
+        await push(entry.domain || domain, entry.fieldLabel, entry.value);
+      }
+    }
+    return imported;
   }
 
   /** Get total entry count. */
