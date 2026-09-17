@@ -1,5 +1,4 @@
 import { localMatcher } from "./localMatcher";
-import { detectFormContext } from "./contextDetector";
 import { detectFormFields } from "./fieldDetector";
 import { createLogger } from "./logger";
 
@@ -14,21 +13,6 @@ class FormFiller {
       log.error("Initialization failed", error);
       throw error;
     }
-  }
-
-  async precompute(): Promise<{
-    formContext: ReturnType<typeof detectFormContext>;
-    fieldCount: number;
-    modelStatus: string;
-  }> {
-    await this.initialize();
-    const formContext = detectFormContext();
-    const fields = detectFormFields();
-    return {
-      formContext,
-      fieldCount: fields.length,
-      modelStatus: localMatcher.getModelStatus(),
-    };
   }
 
   async fillForm(): Promise<{
@@ -94,8 +78,6 @@ class FormFiller {
 
       localMatcher.fillElement(fields[fieldIndex], value);
 
-      // Persist as a context entry (local storage via formHistory) so Options
-      // and future fills can reuse it — not buried only in sync userData.
       const field = fields[fieldIndex];
       const label =
         field.label || field.placeholder || field.name || `Field ${fieldIndex}`;
@@ -155,29 +137,6 @@ class FormFiller {
       log.error("Form detection failed", error);
       return { count: 0, fields: [] };
     }
-  }
-
-  async updateUserData(data: Record<string, unknown>): Promise<void> {
-    await this.initialize();
-    localMatcher.setUserData({
-      ...localMatcher.getUserData(),
-      ...data,
-    } as import("./types").UserData);
-    await chrome.storage.sync.set({
-      userData: { ...localMatcher.getUserData(), ...data },
-    });
-  }
-
-  getUserData() {
-    return localMatcher.getUserData();
-  }
-
-  getModelStatus() {
-    return localMatcher.getModelStatus();
-  }
-
-  setSurveyMode(enabled: boolean) {
-    localMatcher.setSurveyMode(enabled);
   }
 }
 

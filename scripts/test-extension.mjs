@@ -4,7 +4,7 @@
  */
 import puppeteer from "puppeteer";
 import { createServer } from "node:http";
-import { readFileSync, mkdtempSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -37,6 +37,9 @@ const FORM_HTML = `<!DOCTYPE html>
 
     <label for="skills">Skills</label>
     <textarea id="skills" name="skills"></textarea>
+
+    <input id="bare_email" name="user_email" autocomplete="email" />
+    <input id="bare_first" name="first_name" />
 
     <label for="country">Country</label>
     <select id="country" name="country">
@@ -85,12 +88,12 @@ const results = { passed: [], failed: [] };
 
 try {
   browser = await puppeteer.launch({
-    headless: "new",
+    headless: true,
+    pipe: true,
+    enableExtensions: [dist],
     executablePath: process.env.CHROME_PATH || "/usr/bin/google-chrome",
     userDataDir,
     args: [
-      `--disable-extensions-except=${dist}`,
-      `--load-extension=${dist}`,
       "--no-sandbox",
       "--disable-setuid-sandbox",
       "--disable-gpu",
@@ -98,16 +101,12 @@ try {
     ],
   });
 
-  // Wait for service worker / extension id
-  await new Promise((r) => setTimeout(r, 1500));
-
-  const targets = await browser.targets();
-  const extTarget = targets.find(
+  const extTarget = await browser.waitForTarget(
     (t) =>
       t.type() === "service_worker" &&
       t.url().startsWith("chrome-extension://"),
+    { timeout: 15000 },
   );
-  assert(extTarget, "Extension service worker not found — load failed?");
   const extUrl = extTarget.url();
   const extensionId = new URL(extUrl).host;
   console.log("Extension ID:", extensionId);
@@ -117,6 +116,20 @@ try {
   const bg = await extTarget.worker();
   if (bg) {
     await bg.evaluate(async () => {
+      await chrome.storage.local.set({
+        userData: {
+          name: "Ayush Sharma",
+          email: "ayush@example.com",
+          phone: "+1-555-0100",
+          city: "San Francisco",
+          country: "United States",
+          linkedin: "https://linkedin.com/in/ayush",
+          yearsOfExperience: "5",
+          skills: ["TypeScript", "React", "Node.js"],
+          workType: "remote",
+          currentRole: "Software Engineer",
+        },
+      });
       await chrome.storage.sync.set({
         userData: {
           name: "Ayush Sharma",
@@ -164,36 +177,7 @@ try {
 
   await page.goto(formUrl, { waitUntil: "networkidle0" });
 
-  // Resolve content script module from extension manifest WAR
-  const modulePath = await page.evaluate(async (id) => {
-    const manifest = await fetch(`chrome-extension://${id}/manifest.json`).then(
-      (r) => r.json(),
-    );
-    const resources =
-      manifest.web_accessible_resources?.flatMap((e) => e.resources || []) ||
-      [];
-    return (
-      resources.find((r) => /content\.ts-/.test(r) && !r.includes("loader")) ||
-      null
-    );
-  }, extensionId);
-
-  // Manifest fetch from page may be blocked — inject via CDP instead
-  const client = await page.createCDPSession();
-
-  // Prefer chrome.scripting from extension SW
-  if (bg) {
-    const tabId = await (async () => {
-      // get tab id via targets
-      const t = page.target();
-      // puppeteer doesn't expose chrome tab id easily — inject via page evaluate of import
-      return null;
-    })();
-    void tabId;
-  }
-
-  // Inject content module using page's ability to load extension WAR scripts
-  // Use executeScript through extension background
+  // Inject content module using chrome.scripting from the service worker.
   const injectResult = await (async () => {
     if (!bg) return { ok: false, reason: "no sw" };
     // Get chrome tab id
@@ -207,19 +191,6 @@ try {
 
     if (!tabInfo) return { ok: false, reason: "tab not found" };
 
-    const man = await bg.evaluate(() => chrome.runtime.getManifest());
-    const war = man.web_accessible_resources || [];
-    let moduleUrl = null;
-    for (const entry of war) {
-      for (const res of entry.resources || []) {
-        if (/content\.ts-/.test(res) && !res.includes("loader")) {
-          moduleUrl = chrome.runtime.getURL
-            ? null
-            : res;
-          // getURL only in extension context
-        }
-      }
-    }
     const contentModule = await bg.evaluate(() => {
       const man = chrome.runtime.getManifest();
       for (const entry of man.web_accessible_resources || []) {
@@ -300,6 +271,8 @@ try {
       skills: document.getElementById("skills").value,
       country: document.getElementById("country").value,
       work: document.querySelector('input[name="work_type"]:checked')?.value || "",
+      bareEmail: document.getElementById("bare_email").value,
+      bareFirst: document.getElementById("bare_first").value,
     }));
     console.log("DOM values:", values);
 
@@ -311,6 +284,10 @@ try {
     results.passed.push("phone filled");
     assert(values.city.includes("Francisco"), "city not filled: " + values.city);
     results.passed.push("city filled");
+    assert(values.bareEmail === "ayush@example.com", "unlabeled email not filled: " + values.bareEmail);
+    results.passed.push("unlabeled autocomplete email filled");
+    assert(values.bareFirst.includes("Ayush"), "unlabeled first name not filled: " + values.bareFirst);
+    results.passed.push("unlabeled first_name filled");
 
     return { ok: true, values, fill, detected };
   })();

@@ -1,7 +1,8 @@
 /** Manages learned form data and context entries — observed from user submissions. */
 
 import { createLogger } from "./logger";
-import type { LearnedEntry, FormHistory, UserData, ContextEntry } from "./types";
+import type { LearnedEntry, FormHistory, ContextEntry } from "./types";
+import { mergeUserData } from "./profileStore";
 
 const log = createLogger("FormHistory");
 const STORAGE_KEY = "formHistory";
@@ -115,49 +116,9 @@ class FormHistoryService {
     return grouped;
   }
 
-  /** Suggest profile updates from learned data. */
-  async getProfileSuggestions(): Promise<
-    Array<{ key: string; value: string; domain: string }>
-  > {
-    await this.initialize();
-    const result = await chrome.storage.sync.get(["userData"]);
-    const userData: UserData = result.userData || {};
-
-    const suggestions: Array<{ key: string; value: string; domain: string }> =
-      [];
-    const PROFILE_FIELDS: Record<string, RegExp> = {
-      name: /\b(name|full\s*name)\b/i,
-      email: /\b(email|e-?mail)\b/i,
-      phone: /\b(phone|mobile|tel|contact\s*number)\b/i,
-      linkedin: /\b(linkedin|linked\s*in)\b/i,
-      github: /\bgithub\b/i,
-      portfolio: /\b(portfolio|website|personal\s*site)\b/i,
-      address: /\baddress\b/i,
-      city: /\bcity\b/i,
-      state: /\b(state|province)\b/i,
-      zipCode: /\b(zip|postal)\b/i,
-      country: /\bcountry\b/i,
-      salary: /\b(salary|ctc|compensation)\b/i,
-      availability: /\b(availability|available|notice\s*period)\b/i,
-    };
-
-    for (const entry of this.history.entries) {
-      for (const [key, pattern] of Object.entries(PROFILE_FIELDS)) {
-        if (pattern.test(entry.fieldLabel) && !userData[key]) {
-          suggestions.push({ key, value: entry.value, domain: entry.domain });
-          break;
-        }
-      }
-    }
-    return suggestions;
-  }
-
   /** Merge selected keys from learned data into the user profile. */
   async mergeToProfile(updates: Record<string, string>): Promise<void> {
-    const result = await chrome.storage.sync.get(["userData"]);
-    const userData: UserData = result.userData || {};
-    const merged = { ...userData, ...updates };
-    await chrome.storage.sync.set({ userData: merged });
+    await mergeUserData(updates);
     log.debug("Merged learned data into profile", Object.keys(updates));
   }
 
@@ -175,6 +136,37 @@ class FormHistoryService {
     this.history = { entries: [], profileUpdates: {} };
     await this.persist();
     log.debug("Cleared all form history");
+  }
+
+  /** Import learned entries from a JSON backup (grouped by domain or flat list). */
+  async importLearnedData(
+    data: Record<string, LearnedEntry[]> | { entries?: LearnedEntry[] },
+  ): Promise<number> {
+    await this.initialize();
+    let imported = 0;
+
+    const push = async (domain: string, fieldLabel: string, value: string) => {
+      if (!domain || !fieldLabel || !value) return;
+      await this.recordSubmission(domain, [
+        { label: fieldLabel, value },
+      ]);
+      imported++;
+    };
+
+    if ("entries" in data && Array.isArray(data.entries)) {
+      for (const entry of data.entries) {
+        await push(entry.domain, entry.fieldLabel, entry.value);
+      }
+      return imported;
+    }
+
+    for (const [domain, entries] of Object.entries(data)) {
+      if (!Array.isArray(entries)) continue;
+      for (const entry of entries) {
+        await push(entry.domain || domain, entry.fieldLabel, entry.value);
+      }
+    }
+    return imported;
   }
 
   /** Get total entry count. */
@@ -212,11 +204,6 @@ class FormHistoryService {
     const filtered = entries.filter((e) => e.id !== id);
     await chrome.storage.local.set({ [CONTEXT_STORAGE_KEY]: filtered });
     log.debug(`Deleted context entry: ${id}`);
-  }
-
-  async clearContextEntries(): Promise<void> {
-    await chrome.storage.local.remove([CONTEXT_STORAGE_KEY]);
-    log.debug("Cleared all context entries");
   }
 }
 

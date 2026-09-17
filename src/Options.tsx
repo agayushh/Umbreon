@@ -1,6 +1,16 @@
 import { useState, useEffect } from "react";
-import type { UserData, ContextEntry } from "./types";
-import { parseResumeOrLinkedInText, readPdfFile, type ExtractionResult } from "./resumeParser";
+import type { UserData, ContextEntry, LearnedEntry } from "./types";
+import {
+  parseResumeOrLinkedInText,
+  parseImportedFile,
+  parseProfileObject,
+  type ExtractionResult,
+} from "./resumeParser";
+import {
+  loadUserData as loadStoredUserData,
+  saveUserData as persistUserData,
+  mergeUserData,
+} from "./profileStore";
 import {
   User,
   FileText,
@@ -23,14 +33,6 @@ import {
   Check
 } from "lucide-react";
 
-interface LearnedEntry {
-  fieldLabel: string;
-  value: string;
-  domain: string;
-  timestamp: number;
-  source: string;
-}
-
 export default function Options() {
   const [userData, setUserData] = useState<UserData>({});
   const [isLoading, setIsLoading] = useState(false);
@@ -50,7 +52,6 @@ export default function Options() {
     description: "",
     category: "project" as ContextEntry["category"],
     skills: "",
-    impact: "",
   });
 
   // Resume & LinkedIn Extractor Modal State
@@ -90,8 +91,7 @@ export default function Options() {
 
   const loadUserData = async () => {
     try {
-      const result = await chrome.storage.sync.get(["userData"]);
-      setUserData(result.userData || {});
+      setUserData(await loadStoredUserData());
     } catch (error) {
       console.error("Error loading user data:", error);
     }
@@ -100,7 +100,7 @@ export default function Options() {
   const saveUserData = async () => {
     setIsLoading(true);
     try {
-      await chrome.storage.sync.set({ userData });
+      await persistUserData(userData);
       setMessage("Profile saved");
       setTimeout(() => setMessage(""), 3000);
     } catch {
@@ -138,16 +138,18 @@ export default function Options() {
 
   const exportFullData = async () => {
     try {
-      const resp = await chrome.runtime.sendMessage({
-        action: "getContextEntries",
-      });
-      const entries = resp?.data || contextEntries || [];
+      const [contextResp, learnedResp] = await Promise.all([
+        chrome.runtime.sendMessage({ action: "getContextEntries" }),
+        chrome.runtime.sendMessage({ action: "getLearnedData" }),
+      ]);
+      const entries = contextResp?.data || contextEntries || [];
+      const learned = learnedResp?.data || learnedData || {};
       const backupData = {
         version: "1.0.0",
         exportedAt: new Date().toISOString(),
         userData,
         contextEntries: entries,
-        learnedData,
+        learnedData: learned,
       };
 
       const dataStr = JSON.stringify(backupData, null, 2);
@@ -167,41 +169,67 @@ export default function Options() {
     }
   };
 
+  const applyParsedImport = async (parsed: ExtractionResult) => {
+    if (Object.keys(parsed.userData).length > 0 || parsed.extractedSkills.length > 0) {
+      const merged = await mergeUserData({
+        ...parsed.userData,
+        skills: parsed.extractedSkills.length
+          ? parsed.extractedSkills
+          : parsed.userData.skills,
+      });
+      setUserData(merged);
+    }
+
+    if (parsed.contextEntries.length > 0) {
+      for (const ctx of parsed.contextEntries) {
+        await chrome.runtime.sendMessage({
+          action: "saveContextEntry",
+          data: {
+            id: `ctx_imp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+            title: ctx.title,
+            description: ctx.description,
+            category: ctx.category,
+            skills: ctx.skills,
+            impact: ctx.impact,
+            timestamp: Date.now(),
+          },
+        });
+      }
+      await loadContextEntries();
+    }
+
+    if (parsed.learnedData && Object.keys(parsed.learnedData).length > 0) {
+      await chrome.runtime.sendMessage({
+        action: "importLearnedData",
+        data: parsed.learnedData,
+      });
+    }
+  };
+
   const importFullData = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
+    event.target.value = "";
 
     const reader = new FileReader();
     reader.onload = async (e) => {
       try {
         const raw = e.target?.result as string;
         const imported = JSON.parse(raw);
+        const parsed = parseProfileObject(imported);
 
-        if (typeof imported !== "object" || imported === null) {
-          setMessage("Invalid JSON format");
+        if (
+          Object.keys(parsed.userData).length === 0 &&
+          parsed.contextEntries.length === 0 &&
+          !parsed.learnedData
+        ) {
+          setMessage("JSON had no recognizable profile fields");
+          setTimeout(() => setMessage(""), 4000);
           return;
         }
 
-        const importedUserData = imported.userData || (imported.email || imported.name ? imported : {});
-        const importedContext = imported.contextEntries || [];
-
-        if (Object.keys(importedUserData).length > 0) {
-          const mergedUser = { ...userData, ...importedUserData };
-          setUserData(mergedUser);
-          await chrome.storage.sync.set({ userData: mergedUser });
-        }
-
-        if (Array.isArray(importedContext) && importedContext.length > 0) {
-          for (const entry of importedContext) {
-            await chrome.runtime.sendMessage({
-              action: "saveContextEntry",
-              data: entry,
-            });
-          }
-          await loadContextEntries();
-        }
-
-        setMessage("JSON Backup successfully imported and merged!");
+        await applyParsedImport(parsed);
+        setMessage("JSON backup imported — profile is ready to fill forms");
         setTimeout(() => setMessage(""), 4000);
       } catch (err) {
         console.error("Import error:", err);
@@ -223,31 +251,24 @@ export default function Options() {
   const handleFileUploadForExtraction = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    e.target.value = "";
 
     try {
-      let text = "";
-      if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
-        setMessage("Reading PDF resume...");
-        text = await readPdfFile(file);
-      } else {
-        const reader = new FileReader();
-        text = await new Promise<string>((resolve, reject) => {
-          reader.onload = (evt) => resolve((evt.target?.result as string) || "");
-          reader.onerror = () => reject(new Error("File read error"));
-          reader.readAsText(file);
-        });
-      }
-
-      if (text) {
-        setResumeText(text);
-        const result = parseResumeOrLinkedInText(text);
-        setExtractedResult(result);
-        setMessage("PDF Resume successfully read & parsed!");
-        setTimeout(() => setMessage(""), 3500);
-      }
+      setMessage("Reading file...");
+      const result = await parseImportedFile(file);
+      setExtractedResult(result);
+      setResumeText(result.rawTextPreview || "");
+      const kind =
+        result.source === "json"
+          ? "JSON profile"
+          : result.source === "linkedin"
+            ? "LinkedIn profile"
+            : "Resume";
+      setMessage(`${kind} parsed — review and apply below`);
+      setTimeout(() => setMessage(""), 3500);
     } catch (err) {
-      console.error("PDF upload error:", err);
-      setMessage(err instanceof Error ? err.message : "Failed to read PDF file");
+      console.error("Import file error:", err);
+      setMessage(err instanceof Error ? err.message : "Failed to read file");
       setTimeout(() => setMessage(""), 4000);
     }
   };
@@ -255,39 +276,18 @@ export default function Options() {
   const handleApplyExtractedData = async () => {
     if (!extractedResult) return;
 
-    const updatedUserData: UserData = {
-      ...userData,
-      ...extractedResult.userData,
-      skills: Array.from(
-        new Set([...(userData.skills || []), ...extractedResult.extractedSkills]),
-      ),
-    };
-
-    setUserData(updatedUserData);
-    await chrome.storage.sync.set({ userData: updatedUserData });
-
-    for (const ctx of extractedResult.contextEntries) {
-      const entry: ContextEntry = {
-        id: `ctx_ext_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
-        title: ctx.title,
-        description: ctx.description,
-        category: ctx.category,
-        skills: ctx.skills,
-        impact: ctx.impact,
-        timestamp: Date.now(),
-      };
-      await chrome.runtime.sendMessage({
-        action: "saveContextEntry",
-        data: entry,
-      });
+    try {
+      await applyParsedImport(extractedResult);
+      setMessage("Extracted profile & context applied — you can fill forms now");
+      setTimeout(() => setMessage(""), 4000);
+      setIsImportModalOpen(false);
+      setResumeText("");
+      setExtractedResult(null);
+    } catch (err) {
+      console.error("Apply extracted data error:", err);
+      setMessage("Failed to apply imported profile");
+      setTimeout(() => setMessage(""), 4000);
     }
-
-    await loadContextEntries();
-    setMessage("Extracted profile & context memory entries applied!");
-    setTimeout(() => setMessage(""), 4000);
-    setIsImportModalOpen(false);
-    setResumeText("");
-    setExtractedResult(null);
   };
 
   // ── Context Entries ────────────────────────────────────────────────
@@ -315,7 +315,6 @@ export default function Options() {
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean),
-      impact: newContext.impact.trim() || undefined,
       timestamp: Date.now(),
     };
 
@@ -329,7 +328,6 @@ export default function Options() {
         description: "",
         category: "project",
         skills: "",
-        impact: "",
       });
       await loadContextEntries();
       setMessage("Context entry added");
@@ -359,7 +357,7 @@ export default function Options() {
     setLearnedLoading(true);
     try {
       const resp = await chrome.runtime.sendMessage({
-        action: "getLearnedHistory",
+        action: "getLearnedData",
       });
       if (resp?.success) setLearnedData(resp.data || {});
       else setLearnedData({});
@@ -1199,7 +1197,7 @@ export default function Options() {
               {!extractedResult ? (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between text-xs text-zinc-400">
-                    <span>Upload Resume file (.pdf, .txt, .json) or paste LinkedIn / Resume text below:</span>
+                    <span>Upload Resume, LinkedIn export, or JSON (.pdf, .txt, .json)</span>
                     <label className="text-rose-500 hover:underline cursor-pointer flex items-center space-x-1 font-medium">
                       <FileUp className="w-3.5 h-3.5" />
                       <span>Upload File</span>
@@ -1216,7 +1214,7 @@ export default function Options() {
                     rows={8}
                     value={resumeText}
                     onChange={(e) => setResumeText(e.target.value)}
-                    placeholder="Paste your LinkedIn Profile text, Resume text, or Experience section here..."
+                    placeholder="Paste your LinkedIn profile text, resume text, or a JSON profile export here..."
                     className={`w-full p-3 text-xs rounded-xl border font-mono focus:outline-none ${
                       isDark
                         ? "bg-[#18181b] border-[#27272a] text-white"

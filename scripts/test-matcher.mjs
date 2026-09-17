@@ -8,7 +8,7 @@ import { pathToFileURL } from "node:url";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
-import { mkdtempSync, writeFileSync, readFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -54,6 +54,9 @@ const FORM = `<!DOCTYPE html>
     <input id="weird-id.with:chars" name="special_email" type="text" />
     <input type="hidden" name="csrf" value="x" />
     <input type="password" name="password" />
+    <input id="bare_email" name="user_email" autocomplete="email" />
+    <input id="bare_first" name="first_name" />
+    <input id="bare_phone" name="phone_number" />
   </form>
 </body></html>`;
 
@@ -288,6 +291,27 @@ check(
   (result.matches || []).every((m) => typeof m.fieldIndex === "number"),
 );
 
+check(
+  "detects inputs without type attribute",
+  fields.some((f) => f.id === "bare_email") && fields.some((f) => f.id === "bare_first"),
+  fields.map((f) => f.id).join(","),
+);
+check(
+  "unlabeled autocomplete email filled",
+  document.getElementById("bare_email").value === "ayush@example.com",
+  document.getElementById("bare_email").value,
+);
+check(
+  "unlabeled first_name filled",
+  document.getElementById("bare_first").value === "Ayush",
+  document.getElementById("bare_first").value,
+);
+check(
+  "unlabeled phone_number filled",
+  document.getElementById("bare_phone").value.includes("555"),
+  document.getElementById("bare_phone").value,
+);
+
 // Survey mode fills with method survey (not stuck as none)
 console.log("\n--- Survey mode ---");
 // clear form
@@ -322,9 +346,6 @@ storage.sync.userData = {
   phone: "555",
   city: "SF",
 };
-// force re-init
-formFiller.isInitialized = false;
-// can't access private — call detectForms which calls initialize
 const det = await formFiller.detectForms();
 check("formFiller.detectForms returns count", det.count >= 5, JSON.stringify(det.count));
 

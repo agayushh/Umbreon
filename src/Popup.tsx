@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { isRestrictedUrl, sendToTab } from "./tabBridge";
+import { mergeUserData } from "./profileStore";
 import {
   Settings,
   RefreshCw,
@@ -18,13 +19,6 @@ interface FormStats {
     placeholder: string;
     required: boolean;
   }>;
-}
-
-interface FormContext {
-  type: string;
-  domain: string;
-  pageTitle: string;
-  confidence: number;
 }
 
 interface SuggestedUpdate {
@@ -79,7 +73,6 @@ export default function Popup() {
     count: 0,
     fields: [],
   });
-  const [formContext] = useState<FormContext | null>(null);
   const [suggested, setSuggested] = useState<SuggestedUpdate[]>([]);
   const [sensitive, setSensitive] = useState<string[]>([]);
   const [learnedCount, setLearnedCount] = useState(0);
@@ -237,12 +230,7 @@ export default function Popup() {
     suggested.forEach((s) => {
       if (!sensitive.includes(s.key)) data[s.key] = s.value;
     });
-    await chrome.storage.sync.set({
-      userData: {
-        ...(await chrome.storage.sync.get(["userData"])).userData,
-        ...data,
-      },
-    });
+    await mergeUserData(data);
     await chrome.storage.sync.set({ sensitiveKeys: sensitive });
     setMessage("Profile updated");
     setTimeout(() => setMessage(""), 3000);
@@ -285,21 +273,6 @@ export default function Popup() {
 
   const openOptions = () => {
     chrome.runtime.openOptionsPage();
-  };
-
-  const contextTypeLabel = (type: string): string => {
-    const labels: Record<string, string> = {
-      "job-application": "Job Application",
-      registration: "Registration",
-      survey: "Survey",
-      checkout: "Checkout",
-      government: "Government Form",
-      contact: "Contact Form",
-      login: "Login",
-      feedback: "Feedback",
-      generic: "Web Form",
-    };
-    return labels[type] || "Web Form";
   };
 
   const methodCounts = (): Record<string, number> => {
@@ -372,8 +345,6 @@ export default function Popup() {
       >
         <div className="flex items-center justify-between text-xs">
           <span className="font-medium flex items-center space-x-1.5">
-            <span>{contextTypeLabel(formContext?.type || "generic")}</span>
-            <span className="text-zinc-500">·</span>
             <span className="font-semibold">{formStats.count} fields</span>
           </span>
           <button

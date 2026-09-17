@@ -51,20 +51,6 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true;
   }
 
-  // Get profile suggestions from learned data
-  if (msg.action === "getProfileSuggestions") {
-    formHistoryService
-      .getProfileSuggestions()
-      .then((suggestions) => {
-        sendResponse({ success: true, suggestions });
-      })
-      .catch((err) => {
-        log.error("Failed to get profile suggestions", err);
-        sendResponse({ success: false, suggestions: [] });
-      });
-    return true;
-  }
-
   // Merge learned data into profile
   if (msg.action === "mergeLearnedToProfile") {
     const updates = msg.data as Record<string, string>;
@@ -112,6 +98,20 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true;
   }
 
+  // Import learned history from JSON backup
+  if (msg.action === "importLearnedData") {
+    formHistoryService
+      .importLearnedData(msg.data)
+      .then((count) => {
+        sendResponse({ success: true, count });
+      })
+      .catch((err) => {
+        log.error("Failed to import learned data", err);
+        sendResponse({ success: false, count: 0 });
+      });
+    return true;
+  }
+
   // ── Context Entry Handlers ─────────────────────────────────────────
 
   // Save a context entry
@@ -151,20 +151,6 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       })
       .catch((err) => {
         log.error("Failed to delete context entry", err);
-        sendResponse({ success: false });
-      });
-    return true;
-  }
-
-  // Clear all context entries
-  if (msg.action === "clearContextEntries") {
-    formHistoryService
-      .clearContextEntries()
-      .then(() => {
-        sendResponse({ success: true });
-      })
-      .catch((err) => {
-        log.error("Failed to clear context entries", err);
         sendResponse({ success: false });
       });
     return true;
