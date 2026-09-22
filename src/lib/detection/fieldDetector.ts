@@ -1,7 +1,7 @@
 /** DOM field detection — finds fillable inputs across documents and shadow roots. */
 
-import { createLogger } from "./logger";
-import type { FormField } from "./types";
+import { createLogger } from "@/shared/logger";
+import type { FormField } from "@/shared/types";
 
 const log = createLogger("FieldDetector");
 

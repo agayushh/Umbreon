@@ -4,7 +4,7 @@
  * and flat profile JSON.
  */
 
-import type { UserData, ContextEntry, FillItBackup, LearnedEntry } from "./types";
+import type { UserData, ContextEntry, FillItBackup, LearnedEntry } from "@/shared/types";
 
 export interface ExtractionResult {
   userData: Partial<UserData>;

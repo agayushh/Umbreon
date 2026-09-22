@@ -1,6 +1,6 @@
 /** Detects what kind of form/page the user is on. */
 
-import type { FormContext } from "./types";
+import type { FormContext } from "@/shared/types";
 
 const JOB_DOMAINS = [
   "greenhouse.io",

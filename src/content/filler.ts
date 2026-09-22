@@ -1,7 +1,7 @@
-import { localMatcher } from "./localMatcher";
-import { detectFormFields } from "./fieldDetector";
-import { createLogger } from "./logger";
-import type { DetectFormsResponse, FillFormResponse } from "./types";
+import { localMatcher } from "@/lib/matching/localMatcher";
+import { detectFormFields } from "@/lib/detection/fieldDetector";
+import { createLogger } from "@/shared/logger";
+import type { DetectFormsResponse, FillFormResponse } from "@/shared/types";
 
 const log = createLogger("FormFiller");
 

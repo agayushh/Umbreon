@@ -1,13 +1,12 @@
-import { formHistoryService } from "./formHistory";
-import { mergeUserData } from "./profileStore";
-import { createLogger } from "./logger";
+import { formHistoryService } from "@/lib/storage/formHistory";
+import { mergeUserData } from "@/lib/storage/profileStore";
+import { createLogger } from "@/shared/logger";
 
 const log = createLogger("Background");
 
 log.info("Background service worker loaded");
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-  // Store learned data from form submissions
   if (msg.action === "formSubmitted") {
     const { domain, fields } = msg.data as {
       domain: string;
@@ -25,7 +24,6 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true;
   }
 
-  // Get learned data for display
   if (msg.action === "getLearnedData") {
     formHistoryService
       .getEntriesGroupedByDomain()
@@ -39,7 +37,6 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true;
   }
 
-  // Get learning entry count
   if (msg.action === "getLearnedCount") {
     formHistoryService
       .getEntryCount()
@@ -52,7 +49,6 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true;
   }
 
-  // Merge learned data into profile
   if (msg.action === "mergeLearnedToProfile") {
     const updates = msg.data as Record<string, string>;
     mergeUserData(updates)
@@ -66,7 +62,6 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true;
   }
 
-  // Delete a single learned entry
   if (msg.action === "deleteLearnedEntry") {
     const { domain, fieldLabel } = msg.data as {
       domain: string;
@@ -84,7 +79,6 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true;
   }
 
-  // Clear all learned history
   if (msg.action === "clearLearnedHistory") {
     formHistoryService
       .clearHistory()
@@ -98,7 +92,6 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true;
   }
 
-  // Import learned history from JSON backup
   if (msg.action === "importLearnedData") {
     formHistoryService
       .importLearnedData(msg.data)
@@ -112,9 +105,6 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true;
   }
 
-  // ── Context Entry Handlers ─────────────────────────────────────────
-
-  // Save a context entry
   if (msg.action === "saveContextEntry") {
     formHistoryService
       .saveContextEntry(msg.data)
@@ -128,7 +118,6 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true;
   }
 
-  // Get all context entries
   if (msg.action === "getContextEntries") {
     formHistoryService
       .getContextEntries()
@@ -142,7 +131,6 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true;
   }
 
-  // Delete a context entry
   if (msg.action === "deleteContextEntry") {
     formHistoryService
       .deleteContextEntry(msg.data.id)

@@ -1,16 +1,16 @@
 import { useState, useEffect } from "react";
-import type { UserData, ContextEntry, LearnedEntry } from "./types";
+import type { UserData, ContextEntry, LearnedEntry } from "@/shared/types";
 import {
   parseResumeOrLinkedInText,
   parseImportedFile,
   parseProfileObject,
   type ExtractionResult,
-} from "./resumeParser";
+} from "@/lib/parsing/resumeParser";
 import {
   loadUserData as loadStoredUserData,
   saveUserData as persistUserData,
   mergeUserData,
-} from "./profileStore";
+} from "@/lib/storage/profileStore";
 import {
   User,
   FileText,

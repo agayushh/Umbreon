@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { srcAliasPlugin } from "./alias-plugin.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -68,9 +69,9 @@ const wrapper = join(outdir, "entry.ts");
 writeFileSync(
   wrapper,
   `
-export { detectFormFields, getFieldLabel } from "${join(root, "src/fieldDetector.ts").replace(/\\/g, "/")}";
-export { localMatcher } from "${join(root, "src/localMatcher.ts").replace(/\\/g, "/")}";
-export { formFiller } from "${join(root, "src/formFiller.ts").replace(/\\/g, "/")}";
+export { detectFormFields, getFieldLabel } from "${join(root, "src/lib/detection/fieldDetector.ts").replace(/\\/g, "/")}";
+export { localMatcher } from "${join(root, "src/lib/matching/localMatcher.ts").replace(/\\/g, "/")}";
+export { formFiller } from "${join(root, "src/content/filler.ts").replace(/\\/g, "/")}";
 `,
 );
 
@@ -81,6 +82,7 @@ await build({
   platform: "neutral",
   outfile,
   external: ["@xenova/transformers"],
+  plugins: [srcAliasPlugin(root)],
   write: true,
   logLevel: "silent",
 });

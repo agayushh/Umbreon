@@ -1,7 +1,7 @@
 /** User profile persistence. Local storage is source of truth (10MB+).
  *  Sync is best-effort so small profiles can follow the user across devices. */
 
-import type { UserData } from "./types";
+import type { UserData } from "@/shared/types";
 
 const USER_DATA_KEY = "userData";
 

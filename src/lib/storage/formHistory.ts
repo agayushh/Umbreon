@@ -1,7 +1,7 @@
 /** Manages learned form data and context entries — observed from user submissions. */
 
-import { createLogger } from "./logger";
-import type { LearnedEntry, FormHistory, ContextEntry } from "./types";
+import { createLogger } from "@/shared/logger";
+import type { LearnedEntry, FormHistory, ContextEntry } from "@/shared/types";
 
 const log = createLogger("FormHistory");
 const STORAGE_KEY = "formHistory";

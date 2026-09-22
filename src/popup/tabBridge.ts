@@ -1,6 +1,6 @@
 /** Reliable popup ↔ content-script messaging for CRXJS async loaders. */
 
-import type { DetectFormsResponse, FillFormResponse } from "./types";
+import type { DetectFormsResponse, FillFormResponse } from "@/shared/types";
 
 const RESTRICTED_PREFIXES = [
   "chrome://",
@@ -21,6 +21,15 @@ const FIELD_PROBE_SELECTOR =
 export function isRestrictedUrl(url: string | undefined): boolean {
   if (!url) return false;
   return RESTRICTED_PREFIXES.some((p) => url.startsWith(p));
+}
+
+/** CRXJS names content chunks `content.ts-<hash>.js` or `content/index.ts-<hash>.js`. */
+function isContentScriptModule(res: string): boolean {
+  if (res.includes("loader")) return false;
+  return (
+    /(?:^|\/)content\.ts-[^/]+\.js$/.test(res) ||
+    /(?:^|\/)content\/index\.ts-[^/]+\.js$/.test(res)
+  );
 }
 
 function sleep(ms: number): Promise<void> {
@@ -53,7 +62,7 @@ function getContentModuleUrl(): string | null {
           : [];
 
     for (const res of files) {
-      if (/content\.ts-[^/]+\.js$/.test(res) && !res.includes("loader")) {
+      if (isContentScriptModule(res)) {
         return chrome.runtime.getURL(res);
       }
     }

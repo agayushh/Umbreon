@@ -17,12 +17,12 @@
     "default_popup": "index.html"
   },
   "background": {
-    "service_worker": "src/background.ts"
+    "service_worker": "src/background/index.ts"
   },
   "content_scripts": [
     {
       "matches": ["http://*/*", "https://*/*"],
-      "js": ["src/content.ts"],
+      "js": ["src/content/index.ts"],
       "run_at": "document_idle",
       "all_frames": true
     }

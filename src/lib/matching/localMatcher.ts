@@ -1,8 +1,8 @@
 /** Core intelligence engine — exhaustive matching pipeline for form filling. */
 
-import { detectFormContext } from "./contextDetector";
-import { formHistoryService } from "./formHistory";
-import { loadUserData } from "./profileStore";
+import { detectFormContext } from "@/lib/detection/contextDetector";
+import { formHistoryService } from "@/lib/storage/formHistory";
+import { loadUserData } from "@/lib/storage/profileStore";
 import type {
   UserData,
   FormField,
@@ -10,8 +10,8 @@ import type {
   FieldMatch,
   FillResult,
   ContextEntry,
-} from "./types";
-import { createLogger } from "./logger";
+} from "@/shared/types";
+import { createLogger } from "@/shared/logger";
 import { getTransformersPipeline } from "./transformersEnv";
 
 const AUTOCOMPLETE_KEY: Record<string, keyof UserData> = {

@@ -1,12 +1,12 @@
 import { useState, useEffect } from "react";
 import { isRestrictedUrl, sendToTab } from "./tabBridge";
-import { mergeUserData } from "./profileStore";
+import { mergeUserData } from "@/lib/storage/profileStore";
 import type {
   DetectFormsResponse,
   FieldMatch,
   FillFormResponse,
   FillResult,
-} from "./types";
+} from "@/shared/types";
 import {
   Settings,
   RefreshCw,

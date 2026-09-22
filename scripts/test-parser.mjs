@@ -8,6 +8,8 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { srcAliasPlugin } from "./alias-plugin.mjs";
+
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const outdir = mkdtempSync(join(tmpdir(), "fillit-parser-"));
 const outfile = join(outdir, "parser.cjs");
@@ -20,7 +22,7 @@ export {
   parseResumeOrLinkedInText,
   parseProfileJson,
   parseProfileObject,
-} from "${join(root, "src/resumeParser.ts").replace(/\\/g, "/")}";
+} from "${join(root, "src/lib/parsing/resumeParser.ts").replace(/\\/g, "/")}";
 `,
 );
 
@@ -31,6 +33,7 @@ await build({
   platform: "node",
   outfile,
   external: ["pdfjs-dist"],
+  plugins: [srcAliasPlugin(root)],
   write: true,
   logLevel: "silent",
 });
