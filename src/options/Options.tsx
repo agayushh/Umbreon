@@ -13,6 +13,17 @@ import {
   saveUserData as persistUserData,
   mergeUserData,
 } from "@/lib/storage/profileStore";
+import { ImportModal } from "./ImportModal";
+import { ContextTab } from "./tabs/ContextTab";
+import { LearningTab } from "./tabs/LearningTab";
+import { ProfileTab } from "./tabs/ProfileTab";
+import { SettingsTab } from "./tabs/SettingsTab";
+import {
+  ghostButtonClass,
+  iconButtonClass,
+  pageClass,
+  primaryButtonClass,
+} from "./ui";
 import {
   User,
   FileText,
@@ -21,18 +32,11 @@ import {
   Download,
   Upload,
   Save,
-  X,
-  Trash2,
-  MapPin,
-  Globe,
-  Briefcase,
   CheckCircle2,
   AlertCircle,
   Sun,
   Moon,
   Sparkles,
-  FileUp,
-  Check
 } from "lucide-react";
 
 export default function Options() {
@@ -438,13 +442,7 @@ export default function Options() {
   const isDark = theme === "dark";
 
   return (
-    <div
-      className={`min-h-screen font-sans text-xs antialiased pb-12 transition-colors ${
-        isDark
-          ? "bg-[#09090b] text-[#fafafa]"
-          : "bg-[#e9ecef] text-[#0f172a]"
-      }`}
-    >
+    <div className={pageClass(isDark)}>
       {/* Header Bar */}
       <header
         className={`sticky top-0 z-40 border-b backdrop-blur-md transition-colors ${
@@ -468,11 +466,7 @@ export default function Options() {
           <div className="flex items-center space-x-2">
             <button
               onClick={toggleTheme}
-              className={`p-1.5 rounded-md border transition-colors ${
-                isDark
-                  ? "bg-[#18181b] border-[#27272a] text-zinc-300 hover:text-white"
-                  : "bg-white border-[#dcdfe4] text-slate-700 hover:text-black"
-              }`}
+              className={iconButtonClass(isDark)}
               title={isDark ? "Light mode" : "Dark mode"}
             >
               {isDark ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-rose-500" />}
@@ -492,22 +486,14 @@ export default function Options() {
 
             <button
               onClick={exportFullData}
-              className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-md border text-xs font-medium transition-all ${
-                isDark
-                  ? "bg-[#18181b] border-[#27272a] text-zinc-300 hover:text-white"
-                  : "bg-white border-[#dcdfe4] text-slate-700 hover:text-black"
-              }`}
+              className={ghostButtonClass(isDark)}
             >
               <Download className="w-3.5 h-3.5" />
               <span>Export JSON</span>
             </button>
 
             <label
-              className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-md border text-xs font-medium transition-all cursor-pointer ${
-                isDark
-                  ? "bg-[#18181b] border-[#27272a] text-zinc-300 hover:text-white"
-                  : "bg-white border-[#dcdfe4] text-slate-700 hover:text-black"
-              }`}
+              className={`${ghostButtonClass(isDark)} cursor-pointer`}
             >
               <Upload className="w-3.5 h-3.5" />
               <span>Import JSON</span>
@@ -522,11 +508,7 @@ export default function Options() {
             <button
               onClick={saveUserData}
               disabled={isLoading}
-              className={`inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-md text-xs font-medium text-white transition-all ${
-                isDark
-                  ? "bg-[#e11d48] hover:bg-[#be123c]"
-                  : "bg-[#e0562e] hover:bg-[#c2410c]"
-              }`}
+              className={primaryButtonClass(isDark)}
             >
               <Save className="w-3.5 h-3.5" />
               <span>{isLoading ? "Saving..." : "Save"}</span>
@@ -596,722 +578,66 @@ export default function Options() {
           </div>
         )}
 
-        {/* Tab 1: Profile Data */}
         {activeTab === "profile" && (
-          <div className="space-y-6">
-            {/* Personal Details */}
-            <div
-              className={`p-5 rounded-xl border space-y-4 ${
-                isDark
-                  ? "bg-[#121215] border-[#22222a]"
-                  : "bg-white border-[#dcdfe4]"
-              }`}
-            >
-              <div className="flex items-center space-x-2 pb-2 border-b border-zinc-500/10 font-semibold text-xs text-zinc-400">
-                <User className="w-4 h-4 text-rose-500" />
-                <span className="text-white font-medium text-sm">Personal Details</span>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-1">
-                  <label className="text-[11px] text-zinc-400">Full Name</label>
-                  <input
-                    type="text"
-                    value={userData.name || ""}
-                    onChange={(e) => updateField("name", e.target.value)}
-                    placeholder="Ayush Goyal"
-                    className={`w-full px-3 py-2 text-xs rounded-lg border focus:outline-none ${
-                      isDark
-                        ? "bg-[#18181b] border-[#27272a] text-white"
-                        : "bg-white border-[#cbd5e1] text-slate-900"
-                    }`}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[11px] text-zinc-400">First Name</label>
-                  <input
-                    type="text"
-                    value={userData.firstName || ""}
-                    onChange={(e) => updateField("firstName", e.target.value)}
-                    placeholder="Ayush"
-                    className={`w-full px-3 py-2 text-xs rounded-lg border focus:outline-none ${
-                      isDark
-                        ? "bg-[#18181b] border-[#27272a] text-white"
-                        : "bg-white border-[#cbd5e1] text-slate-900"
-                    }`}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[11px] text-zinc-400">Last Name</label>
-                  <input
-                    type="text"
-                    value={userData.lastName || ""}
-                    onChange={(e) => updateField("lastName", e.target.value)}
-                    placeholder="Goyal"
-                    className={`w-full px-3 py-2 text-xs rounded-lg border focus:outline-none ${
-                      isDark
-                        ? "bg-[#18181b] border-[#27272a] text-white"
-                        : "bg-white border-[#cbd5e1] text-slate-900"
-                    }`}
-                  />
-                </div>
-
-                <div className="space-y-1 md:col-span-2">
-                  <label className="text-[11px] text-zinc-400">Email Address</label>
-                  <input
-                    type="email"
-                    value={userData.email || ""}
-                    onChange={(e) => updateField("email", e.target.value)}
-                    placeholder="ayush@example.com"
-                    className={`w-full px-3 py-2 text-xs rounded-lg border focus:outline-none ${
-                      isDark
-                        ? "bg-[#18181b] border-[#27272a] text-white"
-                        : "bg-white border-[#cbd5e1] text-slate-900"
-                    }`}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[11px] text-zinc-400">Phone</label>
-                  <input
-                    type="text"
-                    value={userData.phone || ""}
-                    onChange={(e) => updateField("phone", e.target.value)}
-                    placeholder="+1 555-0199"
-                    className={`w-full px-3 py-2 text-xs rounded-lg border focus:outline-none ${
-                      isDark
-                        ? "bg-[#18181b] border-[#27272a] text-white"
-                        : "bg-white border-[#cbd5e1] text-slate-900"
-                    }`}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[11px] text-zinc-400">Date of Birth</label>
-                  <input
-                    type="date"
-                    value={userData.dateOfBirth || ""}
-                    onChange={(e) => updateField("dateOfBirth", e.target.value)}
-                    className={`w-full px-3 py-2 text-xs rounded-lg border focus:outline-none ${
-                      isDark
-                        ? "bg-[#18181b] border-[#27272a] text-white"
-                        : "bg-white border-[#cbd5e1] text-slate-900"
-                    }`}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Address Information */}
-            <div
-              className={`p-5 rounded-xl border space-y-4 ${
-                isDark
-                  ? "bg-[#121215] border-[#22222a]"
-                  : "bg-white border-[#dcdfe4]"
-              }`}
-            >
-              <div className="flex items-center space-x-2 pb-2 border-b border-zinc-500/10 font-semibold text-xs text-zinc-400">
-                <MapPin className="w-4 h-4 text-rose-500" />
-                <span className="text-white font-medium text-sm">Address Information</span>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="space-y-1 md:col-span-4">
-                  <label className="text-[11px] text-zinc-400">Street Address</label>
-                  <input
-                    type="text"
-                    value={userData.address || ""}
-                    onChange={(e) => updateField("address", e.target.value)}
-                    placeholder="123 Innovation Way"
-                    className={`w-full px-3 py-2 text-xs rounded-lg border focus:outline-none ${
-                      isDark
-                        ? "bg-[#18181b] border-[#27272a] text-white"
-                        : "bg-white border-[#cbd5e1] text-slate-900"
-                    }`}
-                  />
-                </div>
-                <div className="space-y-1 md:col-span-2">
-                  <label className="text-[11px] text-zinc-400">City</label>
-                  <input
-                    type="text"
-                    value={userData.city || ""}
-                    onChange={(e) => updateField("city", e.target.value)}
-                    placeholder="San Francisco"
-                    className={`w-full px-3 py-2 text-xs rounded-lg border focus:outline-none ${
-                      isDark
-                        ? "bg-[#18181b] border-[#27272a] text-white"
-                        : "bg-white border-[#cbd5e1] text-slate-900"
-                    }`}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[11px] text-zinc-400">State</label>
-                  <input
-                    type="text"
-                    value={userData.state || ""}
-                    onChange={(e) => updateField("state", e.target.value)}
-                    placeholder="CA"
-                    className={`w-full px-3 py-2 text-xs rounded-lg border focus:outline-none ${
-                      isDark
-                        ? "bg-[#18181b] border-[#27272a] text-white"
-                        : "bg-white border-[#cbd5e1] text-slate-900"
-                    }`}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[11px] text-zinc-400">ZIP Code</label>
-                  <input
-                    type="text"
-                    value={userData.zipCode || ""}
-                    onChange={(e) => updateField("zipCode", e.target.value)}
-                    placeholder="94105"
-                    className={`w-full px-3 py-2 text-xs rounded-lg border focus:outline-none ${
-                      isDark
-                        ? "bg-[#18181b] border-[#27272a] text-white"
-                        : "bg-white border-[#cbd5e1] text-slate-900"
-                    }`}
-                  />
-                </div>
-                <div className="space-y-1 md:col-span-2">
-                  <label className="text-[11px] text-zinc-400">Country</label>
-                  <input
-                    type="text"
-                    value={userData.country || ""}
-                    onChange={(e) => updateField("country", e.target.value)}
-                    placeholder="United States"
-                    className={`w-full px-3 py-2 text-xs rounded-lg border focus:outline-none ${
-                      isDark
-                        ? "bg-[#18181b] border-[#27272a] text-white"
-                        : "bg-white border-[#cbd5e1] text-slate-900"
-                    }`}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Professional Profile */}
-            <div
-              className={`p-5 rounded-xl border space-y-4 ${
-                isDark
-                  ? "bg-[#121215] border-[#22222a]"
-                  : "bg-white border-[#dcdfe4]"
-              }`}
-            >
-              <div className="flex items-center space-x-2 pb-2 border-b border-zinc-500/10 font-semibold text-xs text-zinc-400">
-                <Briefcase className="w-4 h-4 text-rose-500" />
-                <span className="text-white font-medium text-sm">Professional Profile</span>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-[11px] text-zinc-400">Current Role</label>
-                  <input
-                    type="text"
-                    value={userData.currentRole || ""}
-                    onChange={(e) => updateField("currentRole", e.target.value)}
-                    placeholder="Senior Full Stack Engineer"
-                    className={`w-full px-3 py-2 text-xs rounded-lg border focus:outline-none ${
-                      isDark
-                        ? "bg-[#18181b] border-[#27272a] text-white"
-                        : "bg-white border-[#cbd5e1] text-slate-900"
-                    }`}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[11px] text-zinc-400">Years of Experience</label>
-                  <input
-                    type="text"
-                    value={userData.yearsOfExperience || ""}
-                    onChange={(e) => updateField("yearsOfExperience", e.target.value)}
-                    placeholder="5+ years"
-                    className={`w-full px-3 py-2 text-xs rounded-lg border focus:outline-none ${
-                      isDark
-                        ? "bg-[#18181b] border-[#27272a] text-white"
-                        : "bg-white border-[#cbd5e1] text-slate-900"
-                    }`}
-                  />
-                </div>
-
-                <div className="space-y-1 md:col-span-2">
-                  <label className="text-[11px] text-zinc-400">Education Summary</label>
-                  <input
-                    type="text"
-                    value={userData.education || ""}
-                    onChange={(e) => updateField("education", e.target.value)}
-                    placeholder="B.S. in Computer Science"
-                    className={`w-full px-3 py-2 text-xs rounded-lg border focus:outline-none ${
-                      isDark
-                        ? "bg-[#18181b] border-[#27272a] text-white"
-                        : "bg-white border-[#cbd5e1] text-slate-900"
-                    }`}
-                  />
-                </div>
-
-                {/* Skills */}
-                <div className="space-y-1 md:col-span-2">
-                  <div className="flex justify-between items-center">
-                    <label className="text-[11px] text-zinc-400">Skills</label>
-                    <button
-                      onClick={addSkill}
-                      className="text-rose-500 hover:text-rose-400 font-medium text-[11px]"
-                    >
-                      + Add skill
-                    </button>
-                  </div>
-                  <div className="flex flex-wrap gap-1.5 pt-1">
-                    {userData.skills?.map((skill, idx) => (
-                      <span
-                        key={idx}
-                        className={`inline-flex items-center space-x-1 px-2.5 py-1 rounded-md text-xs border ${
-                          isDark
-                            ? "bg-[#1a1a20] border-[#2c2c36] text-zinc-200"
-                            : "bg-slate-100 border-slate-300 text-slate-800"
-                        }`}
-                      >
-                        <span>{skill}</span>
-                        <button
-                          onClick={() => removeSkill(idx)}
-                          className="text-zinc-500 hover:text-rose-400 ml-1"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      </span>
-                    ))}
-                    {!userData.skills?.length && (
-                      <span className="text-zinc-500 text-xs italic">No skills added yet</span>
-                    )}
-                  </div>
-                </div>
-
-                {/* URLs */}
-                <div className="space-y-1">
-                  <label className="text-[11px] text-zinc-400">LinkedIn</label>
-                  <input
-                    type="url"
-                    value={userData.linkedin || ""}
-                    onChange={(e) => updateField("linkedin", e.target.value)}
-                    placeholder="https://linkedin.com/in/ayush"
-                    className={`w-full px-3 py-2 text-xs rounded-lg border focus:outline-none ${
-                      isDark
-                        ? "bg-[#18181b] border-[#27272a] text-white"
-                        : "bg-white border-[#cbd5e1] text-slate-900"
-                    }`}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[11px] text-zinc-400">GitHub</label>
-                  <input
-                    type="url"
-                    value={userData.github || ""}
-                    onChange={(e) => updateField("github", e.target.value)}
-                    placeholder="https://github.com/agayushh"
-                    className={`w-full px-3 py-2 text-xs rounded-lg border focus:outline-none ${
-                      isDark
-                        ? "bg-[#18181b] border-[#27272a] text-white"
-                        : "bg-white border-[#cbd5e1] text-slate-900"
-                    }`}
-                  />
-                </div>
-                <div className="space-y-1 md:col-span-2">
-                  <label className="text-[11px] text-zinc-400">Portfolio</label>
-                  <input
-                    type="url"
-                    value={userData.portfolio || ""}
-                    onChange={(e) => updateField("portfolio", e.target.value)}
-                    placeholder="https://ayush.dev"
-                    className={`w-full px-3 py-2 text-xs rounded-lg border focus:outline-none ${
-                      isDark
-                        ? "bg-[#18181b] border-[#27272a] text-white"
-                        : "bg-white border-[#cbd5e1] text-slate-900"
-                    }`}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
+          <ProfileTab
+            isDark={isDark}
+            userData={userData}
+            updateField={updateField}
+            addSkill={addSkill}
+            removeSkill={removeSkill}
+          />
         )}
 
-        {/* Tab 2: Context Memory */}
         {activeTab === "context" && (
-          <div className="space-y-6">
-            <div
-              className={`p-5 rounded-xl border space-y-4 ${
-                isDark
-                  ? "bg-[#121215] border-[#22222a]"
-                  : "bg-white border-[#dcdfe4]"
-              }`}
-            >
-              <div className="flex items-center space-x-2 pb-2 border-b border-zinc-500/10 font-semibold text-xs text-zinc-400">
-                <Brain className="w-4 h-4 text-rose-500" />
-                <span className="text-white font-medium text-sm">Add Context Entry</span>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-1 md:col-span-2">
-                  <label className="text-[11px] text-zinc-400">Title</label>
-                  <input
-                    type="text"
-                    value={newContext.title}
-                    onChange={(e) => setNewContext({ ...newContext, title: e.target.value })}
-                    placeholder="e.g. Distributed Cache System Project"
-                    className={`w-full px-3 py-2 text-xs rounded-lg border focus:outline-none ${
-                      isDark
-                        ? "bg-[#18181b] border-[#27272a] text-white"
-                        : "bg-white border-[#cbd5e1] text-slate-900"
-                    }`}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[11px] text-zinc-400">Category</label>
-                  <select
-                    value={newContext.category}
-                    onChange={(e) => setNewContext({ ...newContext, category: e.target.value as ContextEntry["category"] })}
-                    className={`w-full px-3 py-2 text-xs rounded-lg border focus:outline-none ${
-                      isDark
-                        ? "bg-[#18181b] border-[#27272a] text-white"
-                        : "bg-white border-[#cbd5e1] text-slate-900"
-                    }`}
-                  >
-                    <option value="project">Project</option>
-                    <option value="experience">Experience</option>
-                    <option value="leadership">Leadership</option>
-                    <option value="education">Education</option>
-                    <option value="certification">Certification</option>
-                    <option value="other">Other</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1 md:col-span-3">
-                  <label className="text-[11px] text-zinc-400">Description / Key Details</label>
-                  <textarea
-                    rows={3}
-                    value={newContext.description}
-                    onChange={(e) => setNewContext({ ...newContext, description: e.target.value })}
-                    placeholder="Describe what you built, problem solved, or role responsibilities..."
-                    className={`w-full px-3 py-2 text-xs rounded-lg border focus:outline-none ${
-                      isDark
-                        ? "bg-[#18181b] border-[#27272a] text-white"
-                        : "bg-white border-[#cbd5e1] text-slate-900"
-                    }`}
-                  />
-                </div>
-
-                <div className="space-y-1 md:col-span-2">
-                  <label className="text-[11px] text-zinc-400">Skills / Technologies (comma separated)</label>
-                  <input
-                    type="text"
-                    value={newContext.skills}
-                    onChange={(e) => setNewContext({ ...newContext, skills: e.target.value })}
-                    placeholder="Go, Redis, Docker, Microservices"
-                    className={`w-full px-3 py-2 text-xs rounded-lg border focus:outline-none ${
-                      isDark
-                        ? "bg-[#18181b] border-[#27272a] text-white"
-                        : "bg-white border-[#cbd5e1] text-slate-900"
-                    }`}
-                  />
-                </div>
-
-                <div className="flex items-end md:col-span-1">
-                  <button
-                    onClick={addContextEntry}
-                    className={`w-full py-2 px-4 rounded-lg font-medium text-xs text-white transition-all ${
-                      isDark
-                        ? "bg-[#e11d48] hover:bg-[#be123c]"
-                        : "bg-[#e0562e] hover:bg-[#c2410c]"
-                    }`}
-                  >
-                    Add Entry
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* List of Context Entries */}
-            <div className="space-y-3">
-              {contextEntries.map((ctx) => (
-                <div
-                  key={ctx.id}
-                  className={`p-4 rounded-xl border space-y-2 relative group ${
-                    isDark
-                      ? "bg-[#121215] border-[#22222a]"
-                      : "bg-white border-[#dcdfe4]"
-                  }`}
-                >
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-zinc-500/10 text-rose-400">
-                        {ctx.category}
-                      </span>
-                      <h4 className="font-semibold text-sm text-white mt-1">{ctx.title}</h4>
-                    </div>
-                    <button
-                      onClick={() => deleteContextEntry(ctx.id)}
-                      className="text-zinc-500 hover:text-rose-400 p-1"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                  <p className="text-xs text-zinc-400 leading-relaxed">{ctx.description}</p>
-                </div>
-              ))}
-              {!contextEntries.length && (
-                <div className="p-8 text-center text-zinc-500 text-xs">
-                  No context entries saved yet. Add entries or import from your resume/LinkedIn above!
-                </div>
-              )}
-            </div>
-          </div>
+          <ContextTab
+            isDark={isDark}
+            newContext={newContext}
+            setNewContext={setNewContext}
+            addContextEntry={addContextEntry}
+            contextEntries={contextEntries}
+            deleteContextEntry={deleteContextEntry}
+          />
         )}
 
-        {/* Tab 3: Field Memory */}
         {activeTab === "learning" && (
-          <div className="space-y-4">
-            <div className="flex justify-between items-center">
-              <span className="text-xs text-zinc-400">Learned form submissions across websites</span>
-              {Object.keys(learnedData).length > 0 && (
-                <button
-                  onClick={clearAllHistory}
-                  className="text-xs text-rose-500 hover:underline"
-                >
-                  Clear All
-                </button>
-              )}
-            </div>
-
-            {learnedLoading ? (
-              <div className="p-8 text-center text-zinc-500 text-xs">Loading form memories...</div>
-            ) : Object.keys(learnedData).length === 0 ? (
-              <div className="p-8 text-center text-zinc-500 text-xs">No learned form fields yet.</div>
-            ) : (
-              Object.entries(learnedData).map(([domain, entries]) => (
-                <div
-                  key={domain}
-                  className={`p-4 rounded-xl border space-y-2 ${
-                    isDark
-                      ? "bg-[#121215] border-[#22222a]"
-                      : "bg-white border-[#dcdfe4]"
-                  }`}
-                >
-                  <div className="font-semibold text-xs text-rose-400 flex items-center space-x-1.5">
-                    <Globe className="w-3.5 h-3.5" />
-                    <span>{domain}</span>
-                  </div>
-                  <div className="space-y-1.5 pt-1">
-                    {entries.map((entry, i) => (
-                      <div
-                        key={i}
-                        className="flex items-center justify-between text-xs p-2 rounded bg-zinc-500/5"
-                      >
-                        <div>
-                          <span className="font-medium text-white">{entry.fieldLabel}: </span>
-                          <span className="text-zinc-400">{entry.value}</span>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <button
-                            onClick={() => mergeEntryToProfile(entry)}
-                            className="text-[11px] text-emerald-400 hover:underline"
-                          >
-                            Save to Profile
-                          </button>
-                          <button
-                            onClick={() => deleteLearnedEntry(domain, entry.fieldLabel)}
-                            className="text-zinc-500 hover:text-rose-400"
-                          >
-                            <X className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
+          <LearningTab
+            isDark={isDark}
+            learnedLoading={learnedLoading}
+            learnedData={learnedData}
+            clearAllHistory={clearAllHistory}
+            mergeEntryToProfile={mergeEntryToProfile}
+            deleteLearnedEntry={deleteLearnedEntry}
+          />
         )}
 
-        {/* Tab 4: Settings */}
         {activeTab === "settings" && (
-          <div
-            className={`p-5 rounded-xl border space-y-4 ${
-              isDark
-                ? "bg-[#121215] border-[#22222a]"
-                : "bg-white border-[#dcdfe4]"
-            }`}
-          >
-            <div className="flex items-center space-x-2 pb-2 border-b border-zinc-500/10 font-semibold text-xs text-zinc-400">
-              <Settings className="w-4 h-4 text-rose-500" />
-              <span className="text-white font-medium text-sm">Extension Preferences</span>
-            </div>
-
-            <div className="flex items-center justify-between py-2">
-              <div>
-                <div className="font-medium text-xs text-white">Experimental On-Device Models (WASM)</div>
-                <div className="text-[11px] text-zinc-400">Run local MiniLM semantic matching in browser</div>
-              </div>
-              <button
-                onClick={async () => {
-                  const next = !enableLocalModels;
-                  setEnableLocalModels(next);
-                  await chrome.storage.sync.set({ [StorageKey.EnableLocalModels]: next });
-                }}
-                className={`relative inline-flex h-5 w-9 rounded-full transition-colors ${
-                  enableLocalModels
-                    ? isDark ? "bg-[#e11d48]" : "bg-[#e0562e]"
-                    : "bg-zinc-600/30"
-                }`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    enableLocalModels ? "translate-x-4.5" : "translate-x-0.5"
-                  }`}
-                />
-              </button>
-            </div>
-          </div>
+          <SettingsTab
+            isDark={isDark}
+            enableLocalModels={enableLocalModels}
+            onToggleLocalModels={async () => {
+              const next = !enableLocalModels;
+              setEnableLocalModels(next);
+              await chrome.storage.sync.set({ [StorageKey.EnableLocalModels]: next });
+            }}
+          />
         )}
       </main>
 
-      {/* Resume & LinkedIn Extraction Modal */}
       {isImportModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div
-            className={`w-full max-w-2xl rounded-2xl border p-6 space-y-4 shadow-2xl overflow-hidden max-h-[90vh] flex flex-col ${
-              isDark ? "bg-[#121215] border-[#282834] text-white" : "bg-white border-[#cbd5e1] text-slate-900"
-            }`}
-          >
-            <div className="flex items-center justify-between pb-3 border-b border-zinc-500/15">
-              <div className="flex items-center space-x-2">
-                <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-rose-500 to-amber-500 flex items-center justify-center text-white font-bold">
-                  <Sparkles className="w-4 h-4" />
-                </div>
-                <h3 className="font-bold text-sm">Import & Smart Extract from Resume or LinkedIn</h3>
-              </div>
-              <button
-                onClick={() => {
-                  setIsImportModalOpen(false);
-                  setExtractedResult(null);
-                }}
-                className="p-1 rounded text-zinc-400 hover:text-white"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto space-y-4 pr-1">
-              {/* Input Choice */}
-              {!extractedResult ? (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between text-xs text-zinc-400">
-                    <span>Upload Resume, LinkedIn export, or JSON (.pdf, .txt, .json)</span>
-                    <label className="text-rose-500 hover:underline cursor-pointer flex items-center space-x-1 font-medium">
-                      <FileUp className="w-3.5 h-3.5" />
-                      <span>Upload File</span>
-                      <input
-                        type="file"
-                        accept=".pdf,.txt,.json,.md"
-                        onChange={handleFileUploadForExtraction}
-                        className="hidden"
-                      />
-                    </label>
-                  </div>
-
-                  <textarea
-                    rows={8}
-                    value={resumeText}
-                    onChange={(e) => setResumeText(e.target.value)}
-                    placeholder="Paste your LinkedIn profile text, resume text, or a JSON profile export here..."
-                    className={`w-full p-3 text-xs rounded-xl border font-mono focus:outline-none ${
-                      isDark
-                        ? "bg-[#18181b] border-[#27272a] text-white"
-                        : "bg-slate-50 border-[#cbd5e1] text-slate-900"
-                    }`}
-                  />
-
-                  <div className="flex justify-end space-x-2">
-                    <button
-                      onClick={() => setIsImportModalOpen(false)}
-                      className="px-4 py-2 rounded-lg text-xs font-medium bg-zinc-700/40 text-zinc-300 hover:text-white"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={handleParseText}
-                      disabled={!resumeText.trim()}
-                      className={`px-5 py-2 rounded-lg text-xs font-semibold text-white flex items-center space-x-2 transition-all ${
-                        !resumeText.trim()
-                          ? "bg-zinc-800 text-zinc-500 cursor-not-allowed"
-                          : isDark
-                            ? "bg-[#e11d48] hover:bg-[#be123c]"
-                            : "bg-[#e0562e] hover:bg-[#c2410c]"
-                      }`}
-                    >
-                      <Sparkles className="w-3.5 h-3.5" />
-                      <span>Extract Profile & Context</span>
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                /* Extracted Preview */
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-semibold text-emerald-500 flex items-center space-x-1">
-                      <Check className="w-4 h-4" />
-                      <span>Extracted {Object.keys(extractedResult.userData).length} Profile Fields & {extractedResult.contextEntries.length} Context Memories</span>
-                    </span>
-                    <button
-                      onClick={() => setExtractedResult(null)}
-                      className="text-xs text-zinc-400 hover:underline"
-                    >
-                      Edit Text
-                    </button>
-                  </div>
-
-                  {/* Profile Fields Preview */}
-                  <div className="p-3 rounded-xl bg-zinc-500/10 border border-zinc-500/20 space-y-2">
-                    <h4 className="font-bold text-xs">Extracted Profile Fields:</h4>
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      {Object.entries(extractedResult.userData).map(([k, v]) => (
-                        <div key={k} className="p-1.5 rounded bg-zinc-500/10 truncate">
-                          <span className="text-zinc-400 capitalize">{k}: </span>
-                          <span className="font-medium text-white">{String(v)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Context Entries Preview */}
-                  <div className="p-3 rounded-xl bg-zinc-500/10 border border-zinc-500/20 space-y-2">
-                    <h4 className="font-bold text-xs">Extracted Context Memories ({extractedResult.contextEntries.length}):</h4>
-                    <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
-                      {extractedResult.contextEntries.map((ctx, i) => (
-                        <div key={i} className="p-2 rounded bg-zinc-500/10 text-xs space-y-1">
-                          <div className="font-semibold text-rose-400">{ctx.title}</div>
-                          <div className="text-zinc-300 text-[11px] truncate">{ctx.description}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="flex justify-end space-x-2 pt-2 border-t border-zinc-500/20">
-                    <button
-                      onClick={() => setExtractedResult(null)}
-                      className="px-4 py-2 rounded-lg text-xs font-medium bg-zinc-700/40 text-zinc-300 hover:text-white"
-                    >
-                      Back
-                    </button>
-                    <button
-                      onClick={handleApplyExtractedData}
-                      className={`px-5 py-2 rounded-lg text-xs font-semibold text-white flex items-center space-x-2 transition-all ${
-                        isDark ? "bg-[#e11d48] hover:bg-[#be123c]" : "bg-[#e0562e] hover:bg-[#c2410c]"
-                      }`}
-                    >
-                      <Save className="w-3.5 h-3.5" />
-                      <span>Apply All to Profile & Storage</span>
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+        <ImportModal
+          isDark={isDark}
+          resumeText={resumeText}
+          extractedResult={extractedResult}
+          onClose={() => {
+            setIsImportModalOpen(false);
+            setExtractedResult(null);
+          }}
+          onResumeTextChange={setResumeText}
+          onParseText={handleParseText}
+          onFileUpload={handleFileUploadForExtraction}
+          onApply={handleApplyExtractedData}
+          onClearResult={() => setExtractedResult(null)}
+        />
       )}
     </div>
   );
