@@ -277,26 +277,6 @@ const SYNONYMS: Record<string, string[]> = {
     "work arrangement",
     "preferred work mode",
   ],
-
-  // Sensitive (detected but never auto-filled)
-  sensitive: [
-    "ssn",
-    "social security",
-    "passport number",
-    "passport",
-    "driver license",
-    "drivers license",
-    "national id",
-    "tax id",
-    "aadhaar",
-    "pan card",
-    "credit card",
-    "debit card",
-    "card number",
-    "cvv",
-    "bank account",
-    "routing number",
-  ],
 };
 
 const SENSITIVE_PATTERNS = new Set([
@@ -662,7 +642,7 @@ class LocalMatcher {
     if (exactMatch && exactMatch.confidence > 0.8) return exactMatch;
 
     // Step 2: Fuzzy matching (Jaccard + Levenshtein)
-    const fuzzyMatch = await this.fuzzyMatch(normalizedLabel, field);
+    const fuzzyMatch = await this.fuzzyMatch(normalizedLabel);
     if (fuzzyMatch && fuzzyMatch.confidence > 0.55) return fuzzyMatch;
 
     // Step 3: Semantic cosine similarity
@@ -777,10 +757,7 @@ Answer:`;
   /** Coerce profile values (arrays, booleans) into fillable strings. */
   private formatProfileValue(key: string, value: unknown): string {
     if (Array.isArray(value)) return value.join(", ");
-    if (typeof value === "boolean") {
-      if (key === "relocation") return value ? "Yes" : "No";
-      return value ? "Yes" : "No";
-    }
+    if (typeof value === "boolean") return value ? "Yes" : "No";
     // Derive first/last from full name when those keys are empty
     if (
       (value === undefined || value === null || value === "") &&
@@ -931,7 +908,6 @@ Answer:`;
 
     // Direct match: label is exactly a synonym
     for (const [key, synonyms] of Object.entries(SYNONYMS)) {
-      if (key === "sensitive") continue;
       let value = this.userData[key];
       // Allow first/last derivation from full name
       if (
@@ -988,9 +964,7 @@ Answer:`;
 
   private async fuzzyMatch(
     normalizedLabel: string,
-    _field: FormField, // reserved for future field-type-aware scoring
   ): Promise<FieldMatch | null> {
-    void _field;
     const labelTokens = tokenize(normalizedLabel);
     let bestScore = 0;
     let bestValue = "";
@@ -1006,7 +980,6 @@ Answer:`;
     }
 
     for (const [key, synonyms] of Object.entries(SYNONYMS)) {
-      if (key === "sensitive") continue;
       // Never fuzzy-match name parts here; prevents "name"→firstName bleed
       if (key === "firstName" || key === "lastName" || key === "name") continue;
 

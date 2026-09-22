@@ -118,7 +118,6 @@ export interface FormContext {
 
 export interface FormHistory {
   entries: LearnedEntry[];
-  profileUpdates: Record<string, string>;
 }
 
 export interface FillResult {

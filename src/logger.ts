@@ -41,10 +41,6 @@ class Logger {
   error(msg: string, ...args: unknown[]): void {
     if (this.shouldLog("error")) console.error(this.fmt(msg), ...args);
   }
-
-  setLevel(level: LogLevel): void {
-    this.level = level;
-  }
 }
 
 export function createLogger(prefix: string, level: LogLevel = "info"): Logger {

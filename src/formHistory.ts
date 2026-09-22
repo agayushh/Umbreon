@@ -11,7 +11,7 @@ const MAX_ENTRIES = 500;
 const MAX_CONTEXT_ENTRIES = 100;
 
 class FormHistoryService {
-  private history: FormHistory = { entries: [], profileUpdates: {} };
+  private history: FormHistory = { entries: [] };
   private initialized = false;
 
   async initialize(): Promise<void> {
@@ -133,7 +133,7 @@ class FormHistoryService {
 
   /** Clear all learned history. */
   async clearHistory(): Promise<void> {
-    this.history = { entries: [], profileUpdates: {} };
+    this.history = { entries: [] };
     await this.persist();
     log.debug("Cleared all form history");
   }
