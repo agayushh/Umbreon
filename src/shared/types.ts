@@ -47,8 +47,25 @@ export interface UserData {
   relocation?: boolean;
   availability?: string;
   workType?: "remote" | "hybrid" | "onsite";
+  /** Long-form bio from LinkedIn About / resume summary / portfolio. */
+  summary?: string;
   contextEntries?: ContextEntry[];
   [key: string]: unknown;
+}
+
+export interface NamedProfile {
+  id: string;
+  name: string;
+  userData: UserData;
+  contextEntries: ContextEntry[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ProfileBook {
+  version: 1;
+  activeId: string;
+  profiles: NamedProfile[];
 }
 
 export interface FormField {
@@ -81,6 +98,8 @@ export interface FillItBackup {
   contextEntries?: ContextEntry[];
   learnedData?: Record<string, LearnedEntry[]>;
   formHistory?: { entries?: LearnedEntry[] };
+  profiles?: NamedProfile[];
+  activeProfileId?: string;
 }
 
 export interface FieldMatch {
@@ -98,6 +117,8 @@ export interface FieldMatch {
     | "none";
   /** Index into the detectFormFields() array for this page. */
   fieldIndex?: number;
+  /** Frame that owns this field when the page has iframes. */
+  frameId?: number;
 }
 
 export interface FormContext {
@@ -130,7 +151,12 @@ export interface FillResult {
     value: string;
   }>;
   matches?: FieldMatch[];
-  unfilled?: Array<{ label: string; method: string; fieldIndex: number }>;
+  unfilled?: Array<{
+    label: string;
+    method: string;
+    fieldIndex: number;
+    frameId?: number;
+  }>;
 }
 
 export interface DetectFormsResponse {

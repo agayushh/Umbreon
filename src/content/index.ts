@@ -70,7 +70,7 @@ if (!g.__fillitListenerRegistered) {
 }
 
 chrome.storage.onChanged.addListener((changes) => {
-  if (changes[StorageKey.UserData] || changes[StorageKey.SurveyMode] || changes[StorageKey.EnableLocalModels]) {
+  if (changes[StorageKey.UserData] || changes[StorageKey.ProfileBook] || changes[StorageKey.SurveyMode] || changes[StorageKey.EnableLocalModels]) {
     formFiller.initialize().catch(() => {});
   }
 });

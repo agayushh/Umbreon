@@ -3,12 +3,15 @@
 import { createLogger } from "@/shared/logger";
 import type { LearnedEntry, FormHistory, ContextEntry } from "@/shared/types";
 import { StorageKey } from "@/shared/storage";
+import {
+  deleteContextEntry as deleteActiveContextEntry,
+  getActiveContextEntries,
+  saveContextEntry as saveActiveContextEntry,
+} from "./profileStore";
 
 const log = createLogger("FormHistory");
 const STORAGE_KEY = StorageKey.FormHistory;
-const CONTEXT_STORAGE_KEY = StorageKey.ContextEntries;
 const MAX_ENTRIES = 500;
-const MAX_CONTEXT_ENTRIES = 100;
 
 class FormHistoryService {
   private history: FormHistory = { entries: [] };
@@ -169,34 +172,19 @@ class FormHistoryService {
     return this.history.entries.length;
   }
 
-  // ── Context Entry Management ────────────────────────────────────────
+  // ── Context Entry Management (active profile) ───────────────────────
 
   async getContextEntries(): Promise<ContextEntry[]> {
-    const result = await chrome.storage.local.get([CONTEXT_STORAGE_KEY]);
-    return result[CONTEXT_STORAGE_KEY] || [];
+    return getActiveContextEntries();
   }
 
   async saveContextEntry(entry: ContextEntry): Promise<void> {
-    const entries = await this.getContextEntries();
-    const existingIdx = entries.findIndex((e) => e.id === entry.id);
-    if (existingIdx >= 0) {
-      entries[existingIdx] = entry;
-    } else {
-      entries.push(entry);
-    }
-    // Cap entries
-    if (entries.length > MAX_CONTEXT_ENTRIES) {
-      entries.sort((a, b) => b.timestamp - a.timestamp);
-      entries.length = MAX_CONTEXT_ENTRIES;
-    }
-    await chrome.storage.local.set({ [CONTEXT_STORAGE_KEY]: entries });
+    await saveActiveContextEntry(entry);
     log.debug(`Saved context entry: ${entry.title}`);
   }
 
   async deleteContextEntry(id: string): Promise<void> {
-    const entries = await this.getContextEntries();
-    const filtered = entries.filter((e) => e.id !== id);
-    await chrome.storage.local.set({ [CONTEXT_STORAGE_KEY]: filtered });
+    await deleteActiveContextEntry(id);
     log.debug(`Deleted context entry: ${id}`);
   }
 }

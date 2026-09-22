@@ -2,6 +2,7 @@
 
 export const StorageKey = {
   UserData: "userData",
+  ProfileBook: "profileBook",
   FormHistory: "formHistory",
   ContextEntries: "contextEntries",
   SurveyMode: "surveyMode",
