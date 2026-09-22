@@ -15,7 +15,7 @@ function isNonEmptyObject(value: unknown): value is Record<string, unknown> {
 }
 
 /** Drop empty values so imports don't wipe existing profile fields. */
-export function compactUserData(partial: Partial<UserData>): Partial<UserData> {
+function compactUserData(partial: Partial<UserData>): Partial<UserData> {
   const out: Partial<UserData> = {};
   for (const [key, value] of Object.entries(partial)) {
     if (value === undefined || value === null || value === "") continue;

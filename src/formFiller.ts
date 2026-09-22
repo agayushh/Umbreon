@@ -1,6 +1,7 @@
 import { localMatcher } from "./localMatcher";
 import { detectFormFields } from "./fieldDetector";
 import { createLogger } from "./logger";
+import type { DetectFormsResponse, FillFormResponse } from "./types";
 
 const log = createLogger("FormFiller");
 
@@ -15,26 +16,7 @@ class FormFiller {
     }
   }
 
-  async fillForm(): Promise<{
-    success: boolean;
-    message: string;
-    stats?: {
-      filled: number;
-      total: number;
-      errors: string[];
-      suggestedProfileUpdates?: Array<{
-        key: string;
-        label: string;
-        value: string;
-      }>;
-      matches?: Array<{
-        value: string;
-        confidence: number;
-        method: string;
-      }>;
-      unfilled?: Array<{ label: string; method: string }>;
-    };
-  }> {
+  async fillForm(): Promise<FillFormResponse> {
     try {
       await this.initialize();
 
@@ -109,16 +91,7 @@ class FormFiller {
     }
   }
 
-  async detectForms(): Promise<{
-    count: number;
-    fields: Array<{
-      type: string;
-      name: string;
-      label: string;
-      placeholder: string;
-      required: boolean;
-    }>;
-  }> {
+  async detectForms(): Promise<DetectFormsResponse> {
     try {
       await this.initialize();
 

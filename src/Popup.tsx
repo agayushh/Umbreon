@@ -1,6 +1,12 @@
 import { useState, useEffect } from "react";
 import { isRestrictedUrl, sendToTab } from "./tabBridge";
 import { mergeUserData } from "./profileStore";
+import type {
+  DetectFormsResponse,
+  FieldMatch,
+  FillFormResponse,
+  FillResult,
+} from "./types";
 import {
   Settings,
   RefreshCw,
@@ -9,50 +15,6 @@ import {
   Sun,
   Moon
 } from "lucide-react";
-
-interface FormStats {
-  count: number;
-  fields: Array<{
-    type: string;
-    name: string;
-    label: string;
-    placeholder: string;
-    required: boolean;
-  }>;
-}
-
-interface SuggestedUpdate {
-  key: string;
-  label: string;
-  value: string;
-}
-
-interface MatchInfo {
-  value: string;
-  confidence: number;
-  method: string;
-}
-
-interface UnfilledInfo {
-  label: string;
-  method: string;
-  fieldIndex: number;
-}
-
-interface DetectFormsResponse {
-  count: number;
-  fields: FormStats["fields"];
-}
-
-interface FillFormResponse {
-  success: boolean;
-  message: string;
-  stats?: {
-    matches?: MatchInfo[];
-    unfilled?: UnfilledInfo[];
-    suggestedProfileUpdates?: SuggestedUpdate[];
-  };
-}
 
 const methodNames: Record<string, string> = {
   synonym: "synonym match",
@@ -69,16 +31,20 @@ const methodNames: Record<string, string> = {
 export default function Popup() {
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState("");
-  const [formStats, setFormStats] = useState<FormStats>({
+  const [formStats, setFormStats] = useState<DetectFormsResponse>({
     count: 0,
     fields: [],
   });
-  const [suggested, setSuggested] = useState<SuggestedUpdate[]>([]);
+  const [suggested, setSuggested] = useState<
+    NonNullable<FillResult["suggestedProfileUpdates"]>
+  >([]);
   const [sensitive, setSensitive] = useState<string[]>([]);
   const [learnedCount, setLearnedCount] = useState(0);
   const [surveyMode, setSurveyMode] = useState(false);
-  const [matches, setMatches] = useState<MatchInfo[]>([]);
-  const [unfilled, setUnfilled] = useState<UnfilledInfo[]>([]);
+  const [matches, setMatches] = useState<FieldMatch[]>([]);
+  const [unfilled, setUnfilled] = useState<
+    NonNullable<FillResult["unfilled"]>
+  >([]);
   const [contextInputs, setContextInputs] = useState<Record<string, string>>(
     {},
   );
@@ -208,7 +174,7 @@ export default function Popup() {
         }
         if (response.stats?.suggestedProfileUpdates) {
           setSuggested(
-            response.stats.suggestedProfileUpdates as SuggestedUpdate[],
+            response.stats.suggestedProfileUpdates,
           );
         }
       } else {

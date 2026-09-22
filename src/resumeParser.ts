@@ -153,7 +153,7 @@ function coerceScalar(value: unknown): string | boolean | undefined {
   return undefined;
 }
 
-export function sanitizeUserData(input: Record<string, unknown>): Partial<UserData> {
+function sanitizeUserData(input: Record<string, unknown>): Partial<UserData> {
   const userData: Partial<UserData> = {};
 
   for (const [rawKey, rawValue] of Object.entries(input)) {
@@ -321,7 +321,7 @@ function looksLikeJson(text: string): boolean {
 }
 
 /** Extract plain text from a PDF resume. Runs on the main thread (MV3 CSP). */
-export async function readPdfFile(file: File): Promise<string> {
+async function readPdfFile(file: File): Promise<string> {
   try {
     const pdfjsLib = await import("pdfjs-dist");
     pdfjsLib.GlobalWorkerOptions.workerSrc = "";

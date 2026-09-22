@@ -11,7 +11,7 @@
 
 let configured = false;
 
-export async function configureTransformersEnv(): Promise<void> {
+async function configureTransformersEnv(): Promise<void> {
   if (configured) return;
 
   const transformers = await import("@xenova/transformers");

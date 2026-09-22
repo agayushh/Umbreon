@@ -1,5 +1,7 @@
 /** Reliable popup ↔ content-script messaging for CRXJS async loaders. */
 
+import type { DetectFormsResponse, FillFormResponse } from "./types";
+
 const RESTRICTED_PREFIXES = [
   "chrome://",
   "chrome-extension://",
@@ -133,30 +135,6 @@ async function frameIdsWithFields(tabId: number): Promise<number[]> {
   }
   return [0];
 }
-
-type DetectFormsResponse = {
-  count: number;
-  fields: Array<{
-    type: string;
-    name: string;
-    label: string;
-    placeholder: string;
-    required: boolean;
-  }>;
-};
-
-type FillFormResponse = {
-  success: boolean;
-  message: string;
-  stats?: {
-    filled?: number;
-    total?: number;
-    errors?: string[];
-    matches?: Array<{ value: string; confidence: number; method: string }>;
-    unfilled?: Array<{ label: string; method: string; fieldIndex: number }>;
-    suggestedProfileUpdates?: Array<{ key: string; label: string; value: string }>;
-  };
-};
 
 async function sendToFrame(
   tabId: number,

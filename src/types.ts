@@ -132,3 +132,20 @@ export interface FillResult {
   matches?: FieldMatch[];
   unfilled?: Array<{ label: string; method: string; fieldIndex: number }>;
 }
+
+export interface DetectFormsResponse {
+  count: number;
+  fields: Array<{
+    type: string;
+    name: string;
+    label: string;
+    placeholder: string;
+    required: boolean;
+  }>;
+}
+
+export interface FillFormResponse {
+  success: boolean;
+  message: string;
+  stats?: FillResult;
+}
