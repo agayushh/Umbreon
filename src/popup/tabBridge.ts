@@ -202,8 +202,16 @@ export async function sendToTab<T = unknown>(
           filled += res.stats?.filled || 0;
           total += res.stats?.total || 0;
           if (res.stats?.errors) errors.push(...res.stats.errors);
-          if (res.stats?.matches) matches.push(...res.stats.matches);
-          if (res.stats?.unfilled) unfilled.push(...res.stats.unfilled);
+          if (res.stats?.matches) {
+            matches.push(
+              ...res.stats.matches.map((m) => ({ ...m, frameId })),
+            );
+          }
+          if (res.stats?.unfilled) {
+            unfilled.push(
+              ...res.stats.unfilled.map((u) => ({ ...u, frameId })),
+            );
+          }
           if (res.stats?.suggestedProfileUpdates) {
             suggested.push(...res.stats.suggestedProfileUpdates);
           }
@@ -225,6 +233,14 @@ export async function sendToTab<T = unknown>(
     }
 
     if (action === Action.FillSingleField) {
+      const requestedFrame = (message.data as { frameId?: number } | undefined)?.frameId;
+      if (typeof requestedFrame === "number") {
+        try {
+          return (await sendToFrame(tabId, requestedFrame, message)) as T;
+        } catch {
+          return { success: false } as T;
+        }
+      }
       for (const frameId of frameIds) {
         try {
           const res = (await sendToFrame(tabId, frameId, message)) as { success?: boolean };

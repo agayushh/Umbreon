@@ -214,6 +214,17 @@ export const SYNONYMS: Record<string, string[]> = {
     "work arrangement",
     "preferred work mode",
   ],
+  summary: [
+    "summary",
+    "about",
+    "about me",
+    "bio",
+    "biography",
+    "professional summary",
+    "profile summary",
+    "cover letter",
+    "introduction",
+  ],
 };
 
 export const SENSITIVE_PATTERNS = new Set([
@@ -299,4 +310,5 @@ export const PROFILE_KEY_PATTERNS: Array<[RegExp, keyof UserData]> = [
   [/\b(education|qualification|degree|university|college)\b/i, "education"],
   [/\b(experience|work\s*exp)\b/i, "yearsOfExperience"],
   [/\b(certification|certifications)\b/i, "certifications"],
+  [/\b(about\s*me|summary|bio|cover\s*letter)\b/i, "summary"],
 ];

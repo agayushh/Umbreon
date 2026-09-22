@@ -301,6 +301,10 @@ class LocalMatcher {
     const exactMatch = this.exactSynonymMatch(normalizedLabel);
     if (exactMatch && exactMatch.confidence > 0.8) return exactMatch;
 
+    // Step 1b: Phrase-in-label match ("please enter your email address")
+    const containedMatch = this.containedSynonymMatch(normalizedLabel);
+    if (containedMatch) return containedMatch;
+
     // Step 2: Fuzzy matching (Jaccard + Levenshtein)
     const fuzzyMatch = await this.fuzzyMatch(normalizedLabel);
     if (fuzzyMatch && fuzzyMatch.confidence > 0.55) return fuzzyMatch;
@@ -326,6 +330,16 @@ class LocalMatcher {
           return { value: generated, confidence: 0.5, method: "generated" };
         }
       }
+
+      if (this.userData.summary) {
+        return {
+          value: this.userData.summary,
+          confidence: 0.55,
+          method: "template",
+        };
+      }
+      const aboutFallback = this.generateFromTemplate("yourself");
+      if (aboutFallback.value) return aboutFallback;
 
       if (formContext.type !== "survey" && !this.surveyMode) {
         return { value: "", confidence: 0, method: "prompted" };
@@ -620,6 +634,62 @@ Answer:`;
     return null;
   }
 
+  // ── Step 1b: Synonym phrase contained in a longer label ─────────────
+
+  private containedSynonymMatch(normalizedLabel: string): FieldMatch | null {
+    const labelTokens = tokenize(normalizedLabel);
+    const candidates: Array<{ key: string; syn: string; value: string }> = [];
+
+    for (const [key, synonyms] of Object.entries(SYNONYMS)) {
+      if (key === "firstName" || key === "lastName" || key === "name") continue;
+      const formatted = this.formatProfileValue(key, this.userData[key]);
+      if (!formatted) continue;
+      for (const syn of synonyms) {
+        const normSyn = normalize(syn);
+        if (!normSyn) continue;
+        candidates.push({ key, syn: normSyn, value: formatted });
+      }
+    }
+
+    candidates.sort((a, b) => b.syn.length - a.syn.length);
+
+    for (const { key, syn, value } of candidates) {
+      const synTokens = tokenize(syn);
+      if (synTokens.size === 0) continue;
+
+      const isPhrase = syn.includes(" ");
+      const contained = isPhrase
+        ? normalizedLabel.includes(syn)
+        : labelTokens.has(syn);
+      if (!contained) continue;
+
+      if (
+        key === "yearsOfExperience" &&
+        !/\b(years?|yrs?|yoe)\b/.test(normalizedLabel)
+      ) {
+        continue;
+      }
+      if (
+        key === "currentRole" &&
+        syn === "title" &&
+        !/\b(job|role|position|designation)\b/.test(normalizedLabel)
+      ) {
+        continue;
+      }
+      if (synTokens.size === 1 && syn.length < 5 && labelTokens.size > 8) {
+        continue;
+      }
+
+      return {
+        value,
+        confidence: isPhrase ? 0.9 : 0.82,
+        method: "synonym",
+      };
+    }
+
+    return null;
+  }
+
   // ── Step 2: Fuzzy matching ─────────────────────────────────────────
 
   private async fuzzyMatch(
@@ -629,9 +699,8 @@ Answer:`;
     let bestScore = 0;
     let bestValue = "";
 
-    // Reject overly long labels — they're likely questions, not field labels
-    // E.g. "explain about yourself" or "describe a project you are proud of"
-    if (labelTokens.size > 6) return null;
+    // Reject very long labels — they're likely questions, not field labels
+    if (labelTokens.size > 12) return null;
 
     // If this label is a name field, name role handler already ran — do not
     // let fuzzy re-map first/last/full via shared token "name".
@@ -683,11 +752,14 @@ Answer:`;
       }
     }
 
-    // Also check against learned values
+    // Also check against learned values (this domain, then any domain)
     if (bestScore < 0.55) {
       try {
         const domain = location.hostname;
-        const learned = await formHistoryService.getLearnedValues(domain);
+        const learned = {
+          ...(await formHistoryService.getAllLearnedValues()),
+          ...(await formHistoryService.getLearnedValues(domain)),
+        };
 
         for (const [fieldLabel, learnedValue] of Object.entries(learned)) {
           const normLearned = normalize(fieldLabel);
@@ -956,6 +1028,13 @@ Answer:`;
     }
 
     if (/yourself|about you|background/i.test(questionLabel)) {
+      if (this.userData.summary) {
+        return {
+          value: this.userData.summary,
+          confidence: 0.6,
+          method: "template",
+        };
+      }
       return {
         value: `I'm a ${role} with ${experience} of experience, passionate about ${skills}. I have ${this.userData.education || "a strong academic background"} and enjoy working on impactful projects. I'm always eager to learn new things and contribute meaningfully.`,
         confidence: 0.35,
@@ -1091,6 +1170,10 @@ Answer:`;
       const stored = await loadUserData();
       if (Object.keys(stored).length > 0) {
         this.userData = { ...this.userData, ...stored };
+      }
+      const contextEntries = await formHistoryService.getContextEntries();
+      if (contextEntries.length > 0) {
+        this.userData = { ...this.userData, contextEntries };
       }
       const syncResult = await chrome.storage.sync.get([
         StorageKey.SurveyMode,
