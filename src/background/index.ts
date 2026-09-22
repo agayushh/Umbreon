@@ -1,3 +1,4 @@
+import { fetchProfileSource } from "@/lib/parsing/fetchSource";
 import { formHistoryService } from "@/lib/storage/formHistory";
 import { mergeUserData } from "@/lib/storage/profileStore";
 import { createLogger } from "@/shared/logger";
@@ -84,6 +85,20 @@ const handlers: Record<
     const { id } = msg.data as { id: string };
     await formHistoryService.deleteContextEntry(id);
     return { success: true };
+  },
+
+  [Action.FetchSource]: async (msg) => {
+    const url = String((msg.data as { url?: string } | undefined)?.url || "");
+    try {
+      const source = await fetchProfileSource(url);
+      return { success: true, ...source };
+    } catch (err) {
+      log.warn("FetchSource failed", err);
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : "Could not fetch that URL.",
+      };
+    }
   },
 };
 

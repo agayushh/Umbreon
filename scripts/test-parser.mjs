@@ -22,7 +22,13 @@ export {
   parseResumeOrLinkedInText,
   parseProfileJson,
   parseProfileObject,
+  parseFetchedSource,
 } from "${join(root, "src/lib/parsing/resumeParser.ts").replace(/\\/g, "/")}";
+export {
+  looksLikeSourceUrl,
+  classifySourceUrl,
+  assertImportableUrl,
+} from "${join(root, "src/lib/parsing/sourceUrl.ts").replace(/\\/g, "/")}";
 `,
 );
 
@@ -39,8 +45,9 @@ await build({
 });
 
 const require = createRequire(import.meta.url);
-const { parseResumeOrLinkedInText, parseProfileJson, parseProfileObject } =
+const { parseResumeOrLinkedInText, parseProfileJson, parseProfileObject, parseFetchedSource } =
   require(outfile);
+const { looksLikeSourceUrl, classifySourceUrl, assertImportableUrl } = require(outfile);
 
 let passed = 0;
 let failed = 0;
@@ -210,6 +217,34 @@ const pasted = parseResumeOrLinkedInText(JSON.stringify({ name: "Ada Lovelace", 
 check("pasted json source", pasted.source === "json");
 check("pasted json name", pasted.userData.name === "Ada Lovelace");
 check("pasted json email", pasted.userData.email === "ada@example.com");
+
+console.log("\n--- URL classify + JSON-LD ---");
+check("url detector", looksLikeSourceUrl("https://www.linkedin.com/in/ayush"));
+check("url detector rejects text", !looksLikeSourceUrl("Ayush Goyal\nEngineer"));
+check("linkedin kind", classifySourceUrl("linkedin.com/in/ayush") === "linkedin");
+check("portfolio kind", classifySourceUrl("https://ayush.dev") === "portfolio");
+try {
+  assertImportableUrl("https://www.linkedin.com/feed/");
+  check("reject linkedin feed", false);
+} catch {
+  check("reject linkedin feed", true);
+}
+
+const jsonLd = parseFetchedSource(
+  `<html><head>
+<script type="application/ld+json">
+{"@type":"Person","name":"Ada Lovelace","jobTitle":"Analyst","email":"ada@example.com","url":"https://ada.dev","sameAs":["https://github.com/ada","https://linkedin.com/in/ada"],"address":{"addressLocality":"London","addressCountry":"UK"}}
+</script>
+<meta property="og:description" content="Mathematician and the first programmer, building calculating engines." />
+</head><body><h1>Ada Lovelace</h1></body></html>`,
+  { kind: "portfolio", url: "https://ada.dev" },
+);
+check("json-ld name", jsonLd.userData.name === "Ada Lovelace", jsonLd.userData.name);
+check("json-ld role", jsonLd.userData.currentRole === "Analyst", jsonLd.userData.currentRole);
+check("json-ld email", jsonLd.userData.email === "ada@example.com");
+check("json-ld github", /github.com\/ada/i.test(jsonLd.userData.github || ""), jsonLd.userData.github);
+check("json-ld portfolio url stored", jsonLd.userData.portfolio === "https://ada.dev", jsonLd.userData.portfolio);
+check("og summary", /Mathematician/i.test(jsonLd.userData.summary || ""), jsonLd.userData.summary);
 
 console.log(`\n=== ${passed} passed, ${failed} failed ===`);
 process.exit(failed > 0 ? 1 : 0);

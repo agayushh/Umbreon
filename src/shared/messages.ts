@@ -15,6 +15,7 @@ export const Action = {
   SaveContextEntry: "saveContextEntry",
   GetContextEntries: "getContextEntries",
   DeleteContextEntry: "deleteContextEntry",
+  FetchSource: "fetchSource",
 } as const;
 
 export type ActionName = (typeof Action)[keyof typeof Action];

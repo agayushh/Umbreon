@@ -6,8 +6,10 @@ import {
   parseResumeOrLinkedInText,
   parseImportedFile,
   parseProfileObject,
+  parseFetchedSource,
   type ExtractionResult,
 } from "@/lib/parsing/resumeParser";
+import { looksLikeSourceUrl } from "@/lib/parsing/sourceUrl";
 import {
   saveUserData as persistUserData,
   mergeUserData,
@@ -70,6 +72,8 @@ export default function Options() {
   // Resume & LinkedIn Extractor Modal State
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [resumeText, setResumeText] = useState("");
+  const [sourceUrl, setSourceUrl] = useState("");
+  const [importFetching, setImportFetching] = useState(false);
   const [extractedResult, setExtractedResult] = useState<ExtractionResult | null>(null);
   const [profiles, setProfiles] = useState<NamedProfile[]>([]);
   const [activeProfileId, setActiveProfileId] = useState("");
@@ -314,10 +318,62 @@ export default function Options() {
 
   // ── Resume & LinkedIn Extractor Handler ────────────────────────────
 
-  const handleParseText = () => {
-    if (!resumeText.trim()) return;
-    const result = parseResumeOrLinkedInText(resumeText);
+  const applyExtracted = (result: ExtractionResult, kindLabel?: string) => {
     setExtractedResult(result);
+    setResumeText(result.rawTextPreview || resumeText);
+    const kind =
+      kindLabel ||
+      (result.source === "json"
+        ? "JSON profile"
+        : result.source === "linkedin"
+          ? "LinkedIn profile"
+          : result.source === "portfolio"
+            ? "Portfolio"
+            : "Profile");
+    setMessage(`${kind} parsed — review and apply below`);
+    setTimeout(() => setMessage(""), 3500);
+  };
+
+  const handleFetchUrl = async (rawUrl?: string) => {
+    const url = (rawUrl ?? sourceUrl).trim();
+    if (!url) return;
+    setImportFetching(true);
+    setMessage("Fetching page...");
+    try {
+      const resp = await chrome.runtime.sendMessage({
+        action: Action.FetchSource,
+        data: { url },
+      });
+      if (!resp?.success) {
+        throw new Error(resp?.error || "Could not fetch that URL");
+      }
+      const result = parseFetchedSource(resp.text, {
+        kind: resp.kind,
+        url: resp.url,
+        contentType: resp.contentType,
+      });
+      applyExtracted(
+        result,
+        resp.kind === "linkedin" ? "LinkedIn profile" : "Portfolio",
+      );
+    } catch (err) {
+      console.error("Fetch source error:", err);
+      setMessage(err instanceof Error ? err.message : "Failed to fetch URL");
+      setTimeout(() => setMessage(""), 5000);
+    } finally {
+      setImportFetching(false);
+    }
+  };
+
+  const handleParseText = () => {
+    const text = resumeText.trim();
+    if (!text) return;
+    if (looksLikeSourceUrl(text)) {
+      setSourceUrl(text);
+      void handleFetchUrl(text);
+      return;
+    }
+    applyExtracted(parseResumeOrLinkedInText(text));
   };
 
   const handleFileUploadForExtraction = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -327,19 +383,7 @@ export default function Options() {
 
     try {
       setMessage("Reading file...");
-      const result = await parseImportedFile(file);
-      setExtractedResult(result);
-      setResumeText(result.rawTextPreview || "");
-      const kind =
-        result.source === "json"
-          ? "JSON profile"
-          : result.source === "linkedin"
-            ? "LinkedIn profile"
-            : result.source === "portfolio"
-              ? "Portfolio"
-              : "Resume";
-      setMessage(`${kind} parsed — review and apply below`);
-      setTimeout(() => setMessage(""), 3500);
+      applyExtracted(await parseImportedFile(file));
     } catch (err) {
       console.error("Import file error:", err);
       setMessage(err instanceof Error ? err.message : "Failed to read file");
@@ -557,7 +601,7 @@ export default function Options() {
               }`}
             >
               <Sparkles className="w-3.5 h-3.5" />
-              <span>Import Resume / LinkedIn / Portfolio</span>
+              <span>Import from link</span>
             </button>
 
             <button
@@ -702,13 +746,17 @@ export default function Options() {
       {isImportModalOpen && (
         <ImportModal
           isDark={isDark}
+          sourceUrl={sourceUrl}
           resumeText={resumeText}
           extractedResult={extractedResult}
+          fetching={importFetching}
           onClose={() => {
             setIsImportModalOpen(false);
             setExtractedResult(null);
           }}
+          onSourceUrlChange={setSourceUrl}
           onResumeTextChange={setResumeText}
+          onFetchUrl={() => void handleFetchUrl()}
           onParseText={handleParseText}
           onFileUpload={handleFileUploadForExtraction}
           onApply={handleApplyExtractedData}

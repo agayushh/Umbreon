@@ -650,6 +650,136 @@ function extractListSection(raw: string): string[] {
     .slice(0, 16);
 }
 
+function extractOpenGraph(html: string): Partial<UserData> {
+  if (!/<meta\s/i.test(html)) return {};
+  const get = (property: string) =>
+    html.match(
+      new RegExp(
+        `<meta[^>]+(?:property|name)=["']${property}["'][^>]+content=["']([^"']+)["']`,
+        "i",
+      ),
+    )?.[1] ||
+    html.match(
+      new RegExp(
+        `<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']${property}["']`,
+        "i",
+      ),
+    )?.[1];
+
+  const out: Partial<UserData> = {};
+  const title = get("og:title") || get("twitter:title");
+  const description = get("og:description") || get("description");
+  const url = get("og:url");
+  if (title && looksLikeName(title)) {
+    out.name = titleCaseWords(title);
+  } else if (title && looksLikeRole(title)) {
+    out.currentRole = title.slice(0, 80);
+  }
+  if (description && description.length > 40) out.summary = description.slice(0, 800);
+  if (url) {
+    if (/linkedin\.com\/in\//i.test(url)) out.linkedin = withHttps(url);
+    else if (/github\.com\//i.test(url)) out.github = withHttps(url);
+    else out.portfolio = url;
+  }
+  return out;
+}
+
+function applySameAs(url: string, out: Partial<UserData>): void {
+  const href = withHttps(url);
+  if (/linkedin\.com\/in\//i.test(href)) out.linkedin = href.replace(/\/$/, "");
+  else if (/github\.com\//i.test(href)) out.github = href.replace(/\/$/, "");
+  else if (/(twitter\.com|x\.com)\//i.test(href)) out.twitter = href.replace(/\/$/, "");
+  else if (!out.portfolio && /^https?:\/\//i.test(href)) out.portfolio = href;
+}
+
+function extractJsonLdPerson(html: string): Partial<UserData> {
+  const out: Partial<UserData> = {};
+  const blocks = html.matchAll(
+    /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi,
+  );
+  for (const match of blocks) {
+    try {
+      const parsed = JSON.parse(match[1]);
+      const nodes = Array.isArray(parsed)
+        ? parsed
+        : parsed?.["@graph"] && Array.isArray(parsed["@graph"])
+          ? parsed["@graph"]
+          : [parsed];
+      for (const node of nodes) {
+        if (!node || typeof node !== "object") continue;
+        const type = String((node as { "@type"?: unknown })["@type"] || "");
+        if (!/person/i.test(type)) continue;
+        const person = node as Record<string, unknown>;
+        const name = coerceScalar(person.name);
+        if (typeof name === "string" && name) {
+          out.name = name;
+          const parts = name.split(/\s+/).filter(Boolean);
+          out.firstName = parts[0];
+          out.lastName = parts.slice(1).join(" ");
+        }
+        const job = coerceScalar(person.jobTitle);
+        if (typeof job === "string" && job) out.currentRole = job.slice(0, 80);
+        const email = coerceScalar(person.email);
+        if (typeof email === "string" && email.includes("@")) {
+          out.email = email.replace(/^mailto:/i, "");
+        }
+        const phone = coerceScalar(person.telephone);
+        if (typeof phone === "string") out.phone = phone;
+        const url = coerceScalar(person.url);
+        if (typeof url === "string") applySameAs(url, out);
+        const sameAs = asStringArray(person.sameAs);
+        for (const href of sameAs) applySameAs(href, out);
+        const address = person.address;
+        if (address && typeof address === "object") {
+          const addr = address as Record<string, unknown>;
+          const city = coerceScalar(addr.addressLocality);
+          const state = coerceScalar(addr.addressRegion);
+          const country = coerceScalar(addr.addressCountry);
+          if (typeof city === "string") out.city = city;
+          if (typeof state === "string") out.state = state;
+          if (typeof country === "string") out.country = country;
+        }
+        const worksFor = person.worksFor;
+        if (worksFor && typeof worksFor === "object") {
+          const company = coerceScalar((worksFor as { name?: unknown }).name);
+          if (typeof company === "string" && company) {
+            out.previousCompanies = [company];
+          }
+        }
+        const description = coerceScalar(person.description);
+        if (typeof description === "string" && description.length > 40) {
+          out.summary = description.slice(0, 800);
+        }
+      }
+    } catch {
+      /* ignore invalid JSON-LD */
+    }
+  }
+  return out;
+}
+
+function mergePartialUserData(
+  base: Partial<UserData>,
+  overlay: Partial<UserData>,
+): Partial<UserData> {
+  const merged: Partial<UserData> = { ...base };
+  for (const [key, value] of Object.entries(overlay)) {
+    if (value === undefined || value === null || value === "") continue;
+    if (Array.isArray(value)) {
+      const current = (merged as Record<string, unknown>)[key];
+      const existing = Array.isArray(current) ? (current as string[]) : [];
+      (merged as Record<string, unknown>)[key] = Array.from(
+        new Set([...existing, ...value.map(String)]),
+      );
+      continue;
+    }
+    if (!(key in merged) || merged[key as keyof UserData] === undefined) {
+      (merged as Record<string, unknown>)[key] = value;
+    }
+  }
+  return merged;
+}
+
 function extractLabeled(text: string, labels: string): string | undefined {
   const match = text.match(new RegExp(`(?:${labels})\\s*[:\\-]\\s*([^\\n\\r]{2,80})`, "i"));
   return match?.[1]?.trim();
@@ -677,10 +807,15 @@ function detectSource(
 /** Extract structured profile and context memory from resume / LinkedIn / portfolio text. */
 export function parseResumeOrLinkedInText(
   text: string,
-  options?: { sourceHint?: ExtractionResult["source"] },
+  options?: { sourceHint?: ExtractionResult["source"]; sourceUrl?: string },
 ): ExtractionResult {
-  const stripped = htmlToText(text.replace(/\r\n/g, "\n")).trim();
-  const cleanText = stripped || text.replace(/\r\n/g, "\n").trim();
+  const raw = text.replace(/\r\n/g, "\n");
+  const structured = mergePartialUserData(
+    extractJsonLdPerson(raw),
+    extractOpenGraph(raw),
+  );
+  const stripped = htmlToText(raw).trim();
+  const cleanText = stripped || raw.trim();
   if (looksLikeJson(cleanText)) {
     try {
       return parseProfileJson(cleanText);
@@ -690,7 +825,7 @@ export function parseResumeOrLinkedInText(
   }
 
   const lines = cleanText.split("\n").map((l) => l.trim()).filter(Boolean);
-  const userData: Partial<UserData> = {};
+  const userData: Partial<UserData> = { ...structured };
   const source = options?.sourceHint || detectSource(cleanText);
 
   const email = extractEmail(cleanText);
@@ -873,6 +1008,14 @@ export function parseResumeOrLinkedInText(
     });
   }
 
+  if (options?.sourceUrl) {
+    if (source === "linkedin") {
+      userData.linkedin = userData.linkedin || options.sourceUrl.replace(/\/$/, "");
+    } else {
+      userData.portfolio = userData.portfolio || options.sourceUrl;
+    }
+  }
+
   return {
     userData,
     contextEntries: contextEntries.slice(0, 16),
@@ -913,5 +1056,29 @@ export async function parseImportedFile(file: File): Promise<ExtractionResult> {
 
   return parseResumeOrLinkedInText(text, {
     sourceHint: portfolioLike || looksLikeHtml(text) ? "portfolio" : undefined,
+  });
+}
+
+/** Parse a page or file fetched from a LinkedIn / portfolio URL. */
+export function parseFetchedSource(
+  text: string,
+  meta: { kind: "linkedin" | "portfolio"; url: string; contentType?: string },
+): ExtractionResult {
+  if (/json/i.test(meta.contentType || "") || looksLikeJson(text)) {
+    try {
+      const parsed = parseProfileJson(text);
+      if (meta.kind === "linkedin") {
+        parsed.userData.linkedin = parsed.userData.linkedin || meta.url.replace(/\/$/, "");
+      } else {
+        parsed.userData.portfolio = parsed.userData.portfolio || meta.url;
+      }
+      return parsed;
+    } catch {
+      /* fall through */
+    }
+  }
+  return parseResumeOrLinkedInText(text, {
+    sourceHint: meta.kind === "linkedin" ? "linkedin" : "portfolio",
+    sourceUrl: meta.url,
   });
 }
