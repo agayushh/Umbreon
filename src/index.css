@@ -29,11 +29,3 @@
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(150, 150, 150, 0.4);
 }
-
-.glow-red {
-  box-shadow: 0 0 20px -3px rgba(225, 29, 72, 0.3);
-}
-
-.glow-orange {
-  box-shadow: 0 0 20px -3px rgba(224, 86, 46, 0.3);
-}
