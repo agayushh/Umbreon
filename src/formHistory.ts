@@ -2,7 +2,6 @@
 
 import { createLogger } from "./logger";
 import type { LearnedEntry, FormHistory, ContextEntry } from "./types";
-import { mergeUserData } from "./profileStore";
 
 const log = createLogger("FormHistory");
 const STORAGE_KEY = "formHistory";
@@ -114,12 +113,6 @@ class FormHistoryService {
       grouped[domain].sort((a, b) => b.timestamp - a.timestamp);
     }
     return grouped;
-  }
-
-  /** Merge selected keys from learned data into the user profile. */
-  async mergeToProfile(updates: Record<string, string>): Promise<void> {
-    await mergeUserData(updates);
-    log.debug("Merged learned data into profile", Object.keys(updates));
   }
 
   /** Delete a specific entry. */

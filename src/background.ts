@@ -1,4 +1,5 @@
 import { formHistoryService } from "./formHistory";
+import { mergeUserData } from "./profileStore";
 import { createLogger } from "./logger";
 
 const log = createLogger("Background");
@@ -54,8 +55,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   // Merge learned data into profile
   if (msg.action === "mergeLearnedToProfile") {
     const updates = msg.data as Record<string, string>;
-    formHistoryService
-      .mergeToProfile(updates)
+    mergeUserData(updates)
       .then(() => {
         sendResponse({ success: true });
       })
