@@ -169,6 +169,42 @@ check("alias role", flat.userData.currentRole === "Engineer");
 check("alias linkedin", /linkedin/.test(flat.userData.linkedin || ""));
 check("alias years", (flat.userData.yearsOfExperience || "").includes("5"));
 
+console.log("\n--- ALL CAPS name + HTML portfolio ---");
+const caps = parseResumeOrLinkedInText(`AYUSH GOYAL
+Software Engineer
+ayush@caps.example
+Bengaluru, Karnataka, India
+
+WORK EXPERIENCE
+Acme Labs
+Software Engineer
+Built hiring automation used by 20 teams.
+
+SKILLS
+Go, Rust, TypeScript
+`);
+check("caps name", caps.userData.name === "Ayush Goyal", caps.userData.name);
+check("caps city", /Bengaluru/i.test(caps.userData.city || ""), caps.userData.city);
+check("caps skills", (caps.userData.skills || []).some((s) => /TypeScript/i.test(s)));
+check("caps companies", (caps.userData.previousCompanies || []).some((c) => /Acme/i.test(c)), String(caps.userData.previousCompanies));
+
+const html = parseResumeOrLinkedInText(`
+<html><body>
+<h1>Ayush Goyal</h1>
+<p>Senior Engineer</p>
+<p>Email: ayush@port.example</p>
+<section>
+<h2>Projects</h2>
+<h3>FillIt</h3>
+<p>Local-first form filler with resume and LinkedIn import.</p>
+</section>
+</body></html>
+`, { sourceHint: "portfolio" });
+check("html name", html.userData.name === "Ayush Goyal", html.userData.name);
+check("html email", html.userData.email === "ayush@port.example", html.userData.email);
+check("html source", html.source === "portfolio", html.source);
+check("html context", html.contextEntries.length >= 1, String(html.contextEntries.length));
+
 console.log("\n--- JSON pasted into resume parser ---");
 const pasted = parseResumeOrLinkedInText(JSON.stringify({ name: "Ada Lovelace", email: "ada@example.com" }));
 check("pasted json source", pasted.source === "json");

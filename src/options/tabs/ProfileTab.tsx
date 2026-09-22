@@ -329,13 +329,96 @@ export function ProfileTab({
                 }`}
               />
             </div>
-            <div className="space-y-1 md:col-span-2">
-              <label className="text-[11px] text-zinc-400">Portfolio</label>
+            <div className="space-y-1">
+              <label className="text-[11px] text-zinc-400">Portfolio URL</label>
               <input
                 type="url"
                 value={userData.portfolio || ""}
                 onChange={(e) => updateField("portfolio", e.target.value)}
                 placeholder="https://ayush.dev"
+                className={`w-full px-3 py-2 text-xs rounded-lg border focus:outline-none ${
+                  isDark
+                    ? "bg-[#18181b] border-[#27272a] text-white"
+                    : "bg-white border-[#cbd5e1] text-slate-900"
+                }`}
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[11px] text-zinc-400">Twitter / X</label>
+              <input
+                type="url"
+                value={userData.twitter || ""}
+                onChange={(e) => updateField("twitter", e.target.value)}
+                placeholder="https://x.com/ayush"
+                className={`w-full px-3 py-2 text-xs rounded-lg border focus:outline-none ${
+                  isDark
+                    ? "bg-[#18181b] border-[#27272a] text-white"
+                    : "bg-white border-[#cbd5e1] text-slate-900"
+                }`}
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[11px] text-zinc-400">Work type</label>
+              <select
+                value={userData.workType || ""}
+                onChange={(e) => updateField("workType", e.target.value)}
+                className={`w-full px-3 py-2 text-xs rounded-lg border focus:outline-none ${
+                  isDark
+                    ? "bg-[#18181b] border-[#27272a] text-white"
+                    : "bg-white border-[#cbd5e1] text-slate-900"
+                }`}
+              >
+                <option value="">Not set</option>
+                <option value="remote">Remote</option>
+                <option value="hybrid">Hybrid</option>
+                <option value="onsite">Onsite</option>
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-[11px] text-zinc-400">Availability / notice</label>
+              <input
+                type="text"
+                value={userData.availability || ""}
+                onChange={(e) => updateField("availability", e.target.value)}
+                placeholder="Immediate / 30 days"
+                className={`w-full px-3 py-2 text-xs rounded-lg border focus:outline-none ${
+                  isDark
+                    ? "bg-[#18181b] border-[#27272a] text-white"
+                    : "bg-white border-[#cbd5e1] text-slate-900"
+                }`}
+              />
+            </div>
+            <div className="space-y-1 md:col-span-2">
+              <label className="text-[11px] text-zinc-400">Languages</label>
+              <input
+                type="text"
+                value={(userData.languages || []).join(", ")}
+                onChange={(e) =>
+                  updateField(
+                    "languages",
+                    e.target.value
+                      .split(",")
+                      .map((s) => s.trim())
+                      .filter(Boolean),
+                  )
+                }
+                placeholder="English, Hindi"
+                className={`w-full px-3 py-2 text-xs rounded-lg border focus:outline-none ${
+                  isDark
+                    ? "bg-[#18181b] border-[#27272a] text-white"
+                    : "bg-white border-[#cbd5e1] text-slate-900"
+                }`}
+              />
+            </div>
+            <div className="space-y-1 md:col-span-2">
+              <label className="text-[11px] text-zinc-400">
+                Summary / about (used for cover letters and “about you” fields)
+              </label>
+              <textarea
+                rows={4}
+                value={userData.summary || ""}
+                onChange={(e) => updateField("summary", e.target.value)}
+                placeholder="Short professional bio from LinkedIn About, resume summary, or portfolio"
                 className={`w-full px-3 py-2 text-xs rounded-lg border focus:outline-none ${
                   isDark
                     ? "bg-[#18181b] border-[#27272a] text-white"

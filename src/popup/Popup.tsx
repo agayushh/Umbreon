@@ -1,6 +1,12 @@
 import { useState, useEffect } from "react";
 import { isRestrictedUrl, sendToTab } from "./tabBridge";
-import { mergeUserData } from "@/lib/storage/profileStore";
+import {
+  mergeUserData,
+  listProfiles,
+  getActiveProfile,
+  setActiveProfile,
+  createProfile,
+} from "@/lib/storage/profileStore";
 import { Action } from "@/shared/messages";
 import { StorageKey } from "@/shared/storage";
 import type {
@@ -8,7 +14,9 @@ import type {
   FieldMatch,
   FillFormResponse,
   FillResult,
+  NamedProfile,
 } from "@/shared/types";
+import { ProfileSwitcher } from "../options/ProfileSwitcher";
 import {
   Settings,
   RefreshCw,
@@ -52,6 +60,8 @@ export default function Popup() {
   );
   const [pageBlocked, setPageBlocked] = useState(false);
   const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const [profiles, setProfiles] = useState<NamedProfile[]>([]);
+  const [activeProfileId, setActiveProfileId] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -69,6 +79,16 @@ export default function Popup() {
         const themePref = pref[StorageKey.Theme];
         if (themePref === "light" || themePref === "dark") {
           setTheme(themePref);
+        }
+
+        try {
+          const [list, active] = await Promise.all([listProfiles(), getActiveProfile()]);
+          if (!cancelled) {
+            setProfiles(list);
+            setActiveProfileId(active.id);
+          }
+        } catch {
+          /* storage may be empty on first run */
         }
 
         await detectForms();
@@ -227,7 +247,11 @@ export default function Popup() {
       if (item && tab.id && typeof item.fieldIndex === "number") {
         await sendToTab(tab.id, {
           action: Action.FillSingleField,
-          data: { fieldIndex: item.fieldIndex, value: value.trim() },
+          data: {
+            fieldIndex: item.fieldIndex,
+            value: value.trim(),
+            frameId: item.frameId,
+          },
         });
 
         setUnfilled((prev) => prev.filter((u) => u.label !== fieldLabel));
@@ -308,6 +332,31 @@ export default function Popup() {
           </button>
         </div>
       </div>
+
+      {profiles.length > 0 && (
+        <ProfileSwitcher
+          isDark={isDark}
+          profiles={profiles}
+          activeId={activeProfileId}
+          compact
+          onSwitch={async (id) => {
+            await setActiveProfile(id);
+            const [list, active] = await Promise.all([listProfiles(), getActiveProfile()]);
+            setProfiles(list);
+            setActiveProfileId(active.id);
+          }}
+          onCreate={async () => {
+            const name = prompt("Name this profile:", "New profile");
+            if (name === null) return;
+            const created = await createProfile(name.trim() || "New profile");
+            const list = await listProfiles();
+            setProfiles(list);
+            setActiveProfileId(created.id);
+          }}
+          onRename={() => chrome.runtime.openOptionsPage()}
+          onDelete={() => chrome.runtime.openOptionsPage()}
+        />
+      )}
 
       {/* Form Detection Card */}
       <div

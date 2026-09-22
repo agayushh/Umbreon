@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import type { UserData, ContextEntry, LearnedEntry } from "@/shared/types";
+import type { UserData, ContextEntry, LearnedEntry, NamedProfile } from "@/shared/types";
 import { Action } from "@/shared/messages";
 import { StorageKey } from "@/shared/storage";
 import {
@@ -9,11 +9,18 @@ import {
   type ExtractionResult,
 } from "@/lib/parsing/resumeParser";
 import {
-  loadUserData as loadStoredUserData,
   saveUserData as persistUserData,
   mergeUserData,
+  listProfiles,
+  getActiveProfile,
+  setActiveProfile,
+  createProfile,
+  renameProfile,
+  deleteProfile,
+  replaceProfiles,
 } from "@/lib/storage/profileStore";
 import { ImportModal } from "./ImportModal";
+import { ProfileSwitcher } from "./ProfileSwitcher";
 import { ContextTab } from "./tabs/ContextTab";
 import { LearningTab } from "./tabs/LearningTab";
 import { ProfileTab } from "./tabs/ProfileTab";
@@ -64,10 +71,19 @@ export default function Options() {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [resumeText, setResumeText] = useState("");
   const [extractedResult, setExtractedResult] = useState<ExtractionResult | null>(null);
+  const [profiles, setProfiles] = useState<NamedProfile[]>([]);
+  const [activeProfileId, setActiveProfileId] = useState("");
+
+  const reloadActive = async () => {
+    const [list, active] = await Promise.all([listProfiles(), getActiveProfile()]);
+    setProfiles(list);
+    setActiveProfileId(active.id);
+    setUserData(active.userData || {});
+    setContextEntries(active.contextEntries || []);
+  };
 
   useEffect(() => {
-    loadUserData();
-    loadContextEntries();
+    reloadActive();
     chrome.storage.sync.get([StorageKey.EnableLocalModels, StorageKey.Theme]).then((r) => {
       setEnableLocalModels(r[StorageKey.EnableLocalModels] === true);
       const themePref = r[StorageKey.Theme];
@@ -98,7 +114,7 @@ export default function Options() {
 
   const loadUserData = async () => {
     try {
-      setUserData(await loadStoredUserData());
+      await reloadActive();
     } catch (error) {
       console.error("Error loading user data:", error);
     }
@@ -108,6 +124,7 @@ export default function Options() {
     setIsLoading(true);
     try {
       await persistUserData(userData);
+      await reloadActive();
       setMessage("Profile saved");
       setTimeout(() => setMessage(""), 3000);
     } catch {
@@ -115,6 +132,47 @@ export default function Options() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleSwitchProfile = async (id: string) => {
+    try {
+      await persistUserData(userData);
+      await setActiveProfile(id);
+      await reloadActive();
+    } catch (error) {
+      console.error("Error switching profile:", error);
+    }
+  };
+
+  const handleCreateProfile = async () => {
+    const name = prompt("Name this profile:", "New profile");
+    if (name === null) return;
+    try {
+      await persistUserData(userData);
+      await createProfile(name.trim() || "New profile");
+      await reloadActive();
+      setMessage("New profile created");
+      setTimeout(() => setMessage(""), 3000);
+    } catch {
+      setMessage("Failed to create profile");
+    }
+  };
+
+  const handleRenameProfile = async (id: string) => {
+    const current = profiles.find((p) => p.id === id);
+    const name = prompt("Rename profile:", current?.name || "");
+    if (!name?.trim()) return;
+    await renameProfile(id, name);
+    await reloadActive();
+  };
+
+  const handleDeleteProfile = async (id: string) => {
+    if (profiles.length <= 1) return;
+    if (!confirm("Delete this profile? This cannot be undone.")) return;
+    await deleteProfile(id);
+    await reloadActive();
+    setMessage("Profile deleted");
+    setTimeout(() => setMessage(""), 3000);
   };
 
   const updateField = (
@@ -152,11 +210,13 @@ export default function Options() {
       const entries = contextResp?.data || contextEntries || [];
       const learned = learnedResp?.data || learnedData || {};
       const backupData = {
-        version: "1.0.0",
+        version: "1.1.0",
         exportedAt: new Date().toISOString(),
         userData,
         contextEntries: entries,
         learnedData: learned,
+        profiles,
+        activeProfileId,
       };
 
       const dataStr = JSON.stringify(backupData, null, 2);
@@ -177,7 +237,10 @@ export default function Options() {
   };
 
   const applyParsedImport = async (parsed: ExtractionResult) => {
-    if (Object.keys(parsed.userData).length > 0 || parsed.extractedSkills.length > 0) {
+    if (parsed.profiles?.length) {
+      await replaceProfiles(parsed.profiles, parsed.activeProfileId);
+      await reloadActive();
+    } else if (Object.keys(parsed.userData).length > 0 || parsed.extractedSkills.length > 0) {
       const merged = await mergeUserData({
         ...parsed.userData,
         skills: parsed.extractedSkills.length
@@ -211,6 +274,8 @@ export default function Options() {
         data: parsed.learnedData,
       });
     }
+
+    await reloadActive();
   };
 
   const importFullData = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -270,7 +335,9 @@ export default function Options() {
           ? "JSON profile"
           : result.source === "linkedin"
             ? "LinkedIn profile"
-            : "Resume";
+            : result.source === "portfolio"
+              ? "Portfolio"
+              : "Resume";
       setMessage(`${kind} parsed — review and apply below`);
       setTimeout(() => setMessage(""), 3500);
     } catch (err) {
@@ -461,6 +528,15 @@ export default function Options() {
               F
             </div>
             <span className="font-semibold text-sm tracking-tight">FillIt Settings</span>
+            <ProfileSwitcher
+              isDark={isDark}
+              profiles={profiles}
+              activeId={activeProfileId}
+              onSwitch={handleSwitchProfile}
+              onCreate={handleCreateProfile}
+              onRename={handleRenameProfile}
+              onDelete={handleDeleteProfile}
+            />
           </div>
 
           <div className="flex items-center space-x-2">
@@ -481,7 +557,7 @@ export default function Options() {
               }`}
             >
               <Sparkles className="w-3.5 h-3.5" />
-              <span>Import Resume / LinkedIn</span>
+              <span>Import Resume / LinkedIn / Portfolio</span>
             </button>
 
             <button

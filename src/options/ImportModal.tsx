@@ -37,7 +37,7 @@ export function ImportModal({
             <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-rose-500 to-amber-500 flex items-center justify-center text-white font-bold">
               <Sparkles className="w-4 h-4" />
             </div>
-            <h3 className="font-bold text-sm">Import & Smart Extract from Resume or LinkedIn</h3>
+            <h3 className="font-bold text-sm">Import from resume, LinkedIn, or portfolio</h3>
           </div>
           <button
             onClick={() => {
@@ -54,13 +54,13 @@ export function ImportModal({
           {!extractedResult ? (
             <div className="space-y-3">
               <div className="flex items-center justify-between text-xs text-zinc-400">
-                <span>Upload Resume, LinkedIn export, or JSON (.pdf, .txt, .json)</span>
+                <span>Upload resume, LinkedIn export, portfolio, or JSON (.pdf, .txt, .html, .md, .json)</span>
                 <label className="text-rose-500 hover:underline cursor-pointer flex items-center space-x-1 font-medium">
                   <FileUp className="w-3.5 h-3.5" />
                   <span>Upload File</span>
                   <input
                     type="file"
-                    accept=".pdf,.txt,.json,.md"
+                    accept=".pdf,.txt,.json,.md,.html,.htm"
                     onChange={onFileUpload}
                     className="hidden"
                   />
@@ -71,7 +71,7 @@ export function ImportModal({
                 rows={8}
                 value={resumeText}
                 onChange={(e) => onResumeTextChange(e.target.value)}
-                placeholder="Paste your LinkedIn profile text, resume text, or a JSON profile export here..."
+                placeholder="Paste LinkedIn profile text, resume text, portfolio HTML/text, or a JSON profile export..."
                 className={`w-full p-3 text-xs rounded-xl border font-mono focus:outline-none ${
                   isDark
                     ? "bg-[#18181b] border-[#27272a] text-white"

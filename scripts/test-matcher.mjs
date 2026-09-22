@@ -57,7 +57,12 @@ const FORM = `<!DOCTYPE html>
     <input type="password" name="password" />
     <input id="bare_email" name="user_email" autocomplete="email" />
     <input id="bare_first" name="first_name" />
+    <label for="bare_phone"> </label>
     <input id="bare_phone" name="phone_number" />
+    <label for="long_email">Please enter your email address below</label>
+    <input id="long_email" name="email_prompt" type="email" />
+    <label for="about_you">Tell us about yourself</label>
+    <textarea id="about_you" name="about"></textarea>
   </form>
 </body></html>`;
 
@@ -312,6 +317,16 @@ check(
   "unlabeled phone_number filled",
   document.getElementById("bare_phone").value.includes("555"),
   document.getElementById("bare_phone").value,
+);
+check(
+  "long email prompt filled",
+  document.getElementById("long_email").value === "ayush@example.com",
+  document.getElementById("long_email").value,
+);
+check(
+  "about-you filled from profile instead of staying empty",
+  document.getElementById("about_you").value.length > 20,
+  document.getElementById("about_you").value.slice(0, 80),
 );
 
 // Survey mode fills with method survey (not stuck as none)
