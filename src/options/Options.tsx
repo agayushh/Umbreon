@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import type { UserData, ContextEntry, LearnedEntry } from "@/shared/types";
+import { Action } from "@/shared/messages";
+import { StorageKey } from "@/shared/storage";
 import {
   parseResumeOrLinkedInText,
   parseImportedFile,
@@ -62,16 +64,17 @@ export default function Options() {
   useEffect(() => {
     loadUserData();
     loadContextEntries();
-    chrome.storage.sync.get(["enableLocalModels", "theme"]).then((r) => {
-      setEnableLocalModels(r.enableLocalModels === true);
-      if (r.theme === "light" || r.theme === "dark") {
-        setTheme(r.theme);
+    chrome.storage.sync.get([StorageKey.EnableLocalModels, StorageKey.Theme]).then((r) => {
+      setEnableLocalModels(r[StorageKey.EnableLocalModels] === true);
+      const themePref = r[StorageKey.Theme];
+      if (themePref === "light" || themePref === "dark") {
+        setTheme(themePref);
       }
     });
 
     const listener = (changes: { [key: string]: chrome.storage.StorageChange }) => {
-      if (changes.theme) {
-        setTheme(changes.theme.newValue === "light" ? "light" : "dark");
+      if (changes[StorageKey.Theme]) {
+        setTheme(changes[StorageKey.Theme].newValue === "light" ? "light" : "dark");
       }
     };
     chrome.storage.onChanged.addListener(listener);
@@ -86,7 +89,7 @@ export default function Options() {
   const toggleTheme = async () => {
     const nextTheme = theme === "dark" ? "light" : "dark";
     setTheme(nextTheme);
-    await chrome.storage.sync.set({ theme: nextTheme });
+    await chrome.storage.sync.set({ [StorageKey.Theme]: nextTheme });
   };
 
   const loadUserData = async () => {
@@ -139,8 +142,8 @@ export default function Options() {
   const exportFullData = async () => {
     try {
       const [contextResp, learnedResp] = await Promise.all([
-        chrome.runtime.sendMessage({ action: "getContextEntries" }),
-        chrome.runtime.sendMessage({ action: "getLearnedData" }),
+        chrome.runtime.sendMessage({ action: Action.GetContextEntries }),
+        chrome.runtime.sendMessage({ action: Action.GetLearnedData }),
       ]);
       const entries = contextResp?.data || contextEntries || [];
       const learned = learnedResp?.data || learnedData || {};
@@ -183,7 +186,7 @@ export default function Options() {
     if (parsed.contextEntries.length > 0) {
       for (const ctx of parsed.contextEntries) {
         await chrome.runtime.sendMessage({
-          action: "saveContextEntry",
+          action: Action.SaveContextEntry,
           data: {
             id: `ctx_imp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
             title: ctx.title,
@@ -200,7 +203,7 @@ export default function Options() {
 
     if (parsed.learnedData && Object.keys(parsed.learnedData).length > 0) {
       await chrome.runtime.sendMessage({
-        action: "importLearnedData",
+        action: Action.ImportLearnedData,
         data: parsed.learnedData,
       });
     }
@@ -295,7 +298,7 @@ export default function Options() {
   const loadContextEntries = async () => {
     try {
       const resp = await chrome.runtime.sendMessage({
-        action: "getContextEntries",
+        action: Action.GetContextEntries,
       });
       if (resp?.success) setContextEntries(resp.data || []);
     } catch {
@@ -320,7 +323,7 @@ export default function Options() {
 
     try {
       await chrome.runtime.sendMessage({
-        action: "saveContextEntry",
+        action: Action.SaveContextEntry,
         data: entry,
       });
       setNewContext({
@@ -340,7 +343,7 @@ export default function Options() {
   const deleteContextEntry = async (id: string) => {
     try {
       await chrome.runtime.sendMessage({
-        action: "deleteContextEntry",
+        action: Action.DeleteContextEntry,
         data: { id },
       });
       await loadContextEntries();
@@ -357,7 +360,7 @@ export default function Options() {
     setLearnedLoading(true);
     try {
       const resp = await chrome.runtime.sendMessage({
-        action: "getLearnedData",
+        action: Action.GetLearnedData,
       });
       if (resp?.success) setLearnedData(resp.data || {});
       else setLearnedData({});
@@ -371,7 +374,7 @@ export default function Options() {
   const deleteLearnedEntry = async (domain: string, fieldLabel: string) => {
     try {
       await chrome.runtime.sendMessage({
-        action: "deleteLearnedEntry",
+        action: Action.DeleteLearnedEntry,
         data: { domain, fieldLabel },
       });
       await loadLearnedData();
@@ -385,7 +388,7 @@ export default function Options() {
   const clearAllHistory = async () => {
     if (!confirm("Clear all learned form entries?")) return;
     try {
-      await chrome.runtime.sendMessage({ action: "clearLearnedHistory" });
+      await chrome.runtime.sendMessage({ action: Action.ClearLearnedHistory });
       setLearnedData({});
       setMessage("History cleared");
       setTimeout(() => setMessage(""), 3000);
@@ -400,7 +403,7 @@ export default function Options() {
       entry.value;
     try {
       await chrome.runtime.sendMessage({
-        action: "mergeLearnedToProfile",
+        action: Action.MergeLearnedToProfile,
         data: updates,
       });
       await loadUserData();
@@ -1147,7 +1150,7 @@ export default function Options() {
                 onClick={async () => {
                   const next = !enableLocalModels;
                   setEnableLocalModels(next);
-                  await chrome.storage.sync.set({ enableLocalModels: next });
+                  await chrome.storage.sync.set({ [StorageKey.EnableLocalModels]: next });
                 }}
                 className={`relative inline-flex h-5 w-9 rounded-full transition-colors ${
                   enableLocalModels

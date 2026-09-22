@@ -2,10 +2,11 @@
 
 import { createLogger } from "@/shared/logger";
 import type { LearnedEntry, FormHistory, ContextEntry } from "@/shared/types";
+import { StorageKey } from "@/shared/storage";
 
 const log = createLogger("FormHistory");
-const STORAGE_KEY = "formHistory";
-const CONTEXT_STORAGE_KEY = "contextEntries";
+const STORAGE_KEY = StorageKey.FormHistory;
+const CONTEXT_STORAGE_KEY = StorageKey.ContextEntries;
 const MAX_ENTRIES = 500;
 const MAX_CONTEXT_ENTRIES = 100;
 

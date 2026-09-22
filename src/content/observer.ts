@@ -1,5 +1,6 @@
 import { createLogger } from "@/shared/logger";
 import { getFieldLabel } from "@/lib/detection/fieldDetector";
+import { Action } from "@/shared/messages";
 
 const log = createLogger("Content");
 
@@ -81,7 +82,7 @@ function captureAndSendFormData(form: HTMLFormElement): void {
         `Captured ${fields.length} fields from form submission on ${domain}`,
       );
       chrome.runtime.sendMessage({
-        action: "formSubmitted",
+        action: Action.FormSubmitted,
         data: { domain, fields },
       });
     }

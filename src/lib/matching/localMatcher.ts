@@ -13,6 +13,7 @@ import type {
 } from "@/shared/types";
 import { createLogger } from "@/shared/logger";
 import { getTransformersPipeline } from "./transformersEnv";
+import { StorageKey } from "@/shared/storage";
 
 const AUTOCOMPLETE_KEY: Record<string, keyof UserData> = {
   name: "name",
@@ -388,11 +389,11 @@ class LocalMatcher {
   async initialize(): Promise<void> {
     this.userData = await loadUserData();
     const result = await chrome.storage.sync.get([
-      "surveyMode",
-      "enableLocalModels",
+      StorageKey.SurveyMode,
+      StorageKey.EnableLocalModels,
     ]);
-    this.surveyMode = result.surveyMode || false;
-    this.enableLocalModels = result.enableLocalModels === true;
+    this.surveyMode = result[StorageKey.SurveyMode] || false;
+    this.enableLocalModels = result[StorageKey.EnableLocalModels] === true;
 
     await formHistoryService.initialize();
 
@@ -1714,14 +1715,14 @@ Answer:`;
         this.userData = { ...this.userData, ...stored };
       }
       const syncResult = await chrome.storage.sync.get([
-        "surveyMode",
-        "enableLocalModels",
+        StorageKey.SurveyMode,
+        StorageKey.EnableLocalModels,
       ]);
-      if (syncResult.surveyMode !== undefined) {
-        this.surveyMode = syncResult.surveyMode;
+      if (syncResult[StorageKey.SurveyMode] !== undefined) {
+        this.surveyMode = syncResult[StorageKey.SurveyMode];
       }
-      if (syncResult.enableLocalModels !== undefined) {
-        this.enableLocalModels = syncResult.enableLocalModels === true;
+      if (syncResult[StorageKey.EnableLocalModels] !== undefined) {
+        this.enableLocalModels = syncResult[StorageKey.EnableLocalModels] === true;
       }
     } catch {
       // ignore sync errors

@@ -1,6 +1,7 @@
 /** Reliable popup ↔ content-script messaging for CRXJS async loaders. */
 
 import type { DetectFormsResponse, FillFormResponse } from "@/shared/types";
+import { Action } from "@/shared/messages";
 
 const RESTRICTED_PREFIXES = [
   "chrome://",
@@ -72,7 +73,7 @@ function getContentModuleUrl(): string | null {
 
 async function ping(tabId: number): Promise<boolean> {
   try {
-    const res = await chrome.tabs.sendMessage(tabId, { action: "ping" });
+    const res = await chrome.tabs.sendMessage(tabId, { action: Action.Ping });
     return Boolean(res?.ok);
   } catch {
     return false;
@@ -161,10 +162,10 @@ export async function sendToTab<T = unknown>(
   await ensureContentScript(tabId);
 
   const action = String(message.action || "");
-  if (action === "detectForms" || action === "fillForm" || action === "fillSingleField") {
+  if (action === Action.DetectForms || action === Action.FillForm || action === Action.FillSingleField) {
     const frameIds = await frameIdsWithFields(tabId);
 
-    if (action === "detectForms") {
+    if (action === Action.DetectForms) {
       const merged: DetectFormsResponse = { count: 0, fields: [] };
       for (const frameId of frameIds) {
         try {
@@ -182,7 +183,7 @@ export async function sendToTab<T = unknown>(
       return merged as T;
     }
 
-    if (action === "fillForm") {
+    if (action === Action.FillForm) {
       let filled = 0;
       let total = 0;
       const errors: string[] = [];
@@ -223,7 +224,7 @@ export async function sendToTab<T = unknown>(
       } as T;
     }
 
-    if (action === "fillSingleField") {
+    if (action === Action.FillSingleField) {
       for (const frameId of frameIds) {
         try {
           const res = (await sendToFrame(tabId, frameId, message)) as { success?: boolean };

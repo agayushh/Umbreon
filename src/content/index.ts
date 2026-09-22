@@ -1,6 +1,8 @@
 import { formFiller } from "./filler";
 import { observeFormSubmissions } from "./observer";
 import { createLogger } from "@/shared/logger";
+import { Action } from "@/shared/messages";
+import { StorageKey } from "@/shared/storage";
 
 const log = createLogger("Content");
 
@@ -12,12 +14,12 @@ if (!g.__fillitListenerRegistered) {
   g.__fillitListenerRegistered = true;
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-    if (message.action === "ping") {
+    if (message.action === Action.Ping) {
       sendResponse({ ok: true });
       return false;
     }
 
-    if (message.action === "fillForm") {
+    if (message.action === Action.FillForm) {
       formFiller
         .fillForm()
         .then((result) => {
@@ -33,7 +35,7 @@ if (!g.__fillitListenerRegistered) {
       return true;
     }
 
-    if (message.action === "detectForms") {
+    if (message.action === Action.DetectForms) {
       formFiller
         .detectForms()
         .then((result) => {
@@ -46,7 +48,7 @@ if (!g.__fillitListenerRegistered) {
       return true;
     }
 
-    if (message.action === "fillSingleField") {
+    if (message.action === Action.FillSingleField) {
       const { fieldIndex, value } = message.data as {
         fieldIndex: number;
         value: string;
@@ -68,7 +70,7 @@ if (!g.__fillitListenerRegistered) {
 }
 
 chrome.storage.onChanged.addListener((changes) => {
-  if (changes.userData || changes.surveyMode || changes.enableLocalModels) {
+  if (changes[StorageKey.UserData] || changes[StorageKey.SurveyMode] || changes[StorageKey.EnableLocalModels]) {
     formFiller.initialize().catch(() => {});
   }
 });

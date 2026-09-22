@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { isRestrictedUrl, sendToTab } from "./tabBridge";
 import { mergeUserData } from "@/lib/storage/profileStore";
+import { Action } from "@/shared/messages";
+import { StorageKey } from "@/shared/storage";
 import type {
   DetectFormsResponse,
   FieldMatch,
@@ -56,11 +58,17 @@ export default function Popup() {
 
     const initializePopup = async () => {
       try {
-        const pref = await chrome.storage.sync.get(["surveyMode", "theme"]);
+        const pref = await chrome.storage.sync.get([
+          StorageKey.SurveyMode,
+          StorageKey.Theme,
+        ]);
         if (cancelled) return;
-        if (pref.surveyMode !== undefined) setSurveyMode(pref.surveyMode);
-        if (pref.theme === "light" || pref.theme === "dark") {
-          setTheme(pref.theme);
+        if (pref[StorageKey.SurveyMode] !== undefined) {
+          setSurveyMode(pref[StorageKey.SurveyMode]);
+        }
+        const themePref = pref[StorageKey.Theme];
+        if (themePref === "light" || themePref === "dark") {
+          setTheme(themePref);
         }
 
         await detectForms();
@@ -68,7 +76,7 @@ export default function Popup() {
 
         try {
           const resp = await chrome.runtime.sendMessage({
-            action: "getLearnedCount",
+            action: Action.GetLearnedCount,
           });
           if (!cancelled && resp?.count) setLearnedCount(resp.count);
         } catch {
@@ -82,8 +90,8 @@ export default function Popup() {
     initializePopup();
 
     const listener = (changes: { [key: string]: chrome.storage.StorageChange }) => {
-      if (changes.theme) {
-        setTheme(changes.theme.newValue === "light" ? "light" : "dark");
+      if (changes[StorageKey.Theme]) {
+        setTheme(changes[StorageKey.Theme].newValue === "light" ? "light" : "dark");
       }
     };
     chrome.storage.onChanged.addListener(listener);
@@ -98,7 +106,7 @@ export default function Popup() {
   const toggleTheme = async () => {
     const nextTheme = theme === "dark" ? "light" : "dark";
     setTheme(nextTheme);
-    await chrome.storage.sync.set({ theme: nextTheme });
+    await chrome.storage.sync.set({ [StorageKey.Theme]: nextTheme });
   };
 
   const getActiveTab = async () => {
@@ -129,7 +137,7 @@ export default function Popup() {
       setPageBlocked(false);
 
       const response = await sendToTab<DetectFormsResponse>(tab.id, {
-        action: "detectForms",
+        action: Action.DetectForms,
       });
       setFormStats(response || { count: 0, fields: [] });
     } catch (err) {
@@ -162,7 +170,7 @@ export default function Popup() {
       }
 
       const response = await sendToTab<FillFormResponse>(tab.id, {
-        action: "fillForm",
+        action: Action.FillForm,
       });
       if (response.success) {
         setMessage(response.message);
@@ -197,7 +205,7 @@ export default function Popup() {
       if (!sensitive.includes(s.key)) data[s.key] = s.value;
     });
     await mergeUserData(data);
-    await chrome.storage.sync.set({ sensitiveKeys: sensitive });
+    await chrome.storage.sync.set({ [StorageKey.SensitiveKeys]: sensitive });
     setMessage("Profile updated");
     setTimeout(() => setMessage(""), 3000);
     setSuggested([]);
@@ -206,7 +214,7 @@ export default function Popup() {
   const toggleSurveyMode = async () => {
     const newMode = !surveyMode;
     setSurveyMode(newMode);
-    await chrome.storage.sync.set({ surveyMode: newMode });
+    await chrome.storage.sync.set({ [StorageKey.SurveyMode]: newMode });
   };
 
   const submitContext = async (fieldLabel: string) => {
@@ -218,7 +226,7 @@ export default function Popup() {
       const item = unfilled.find((u) => u.label === fieldLabel);
       if (item && tab.id && typeof item.fieldIndex === "number") {
         await sendToTab(tab.id, {
-          action: "fillSingleField",
+          action: Action.FillSingleField,
           data: { fieldIndex: item.fieldIndex, value: value.trim() },
         });
 

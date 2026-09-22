@@ -2,8 +2,9 @@
  *  Sync is best-effort so small profiles can follow the user across devices. */
 
 import type { UserData } from "@/shared/types";
+import { StorageKey } from "@/shared/storage";
 
-const USER_DATA_KEY = "userData";
+const USER_DATA_KEY = StorageKey.UserData;
 
 function isNonEmptyObject(value: unknown): value is Record<string, unknown> {
   return (

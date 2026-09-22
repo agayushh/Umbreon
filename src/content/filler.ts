@@ -1,6 +1,7 @@
 import { localMatcher } from "@/lib/matching/localMatcher";
 import { detectFormFields } from "@/lib/detection/fieldDetector";
 import { createLogger } from "@/shared/logger";
+import { Action } from "@/shared/messages";
 import type { DetectFormsResponse, FillFormResponse } from "@/shared/types";
 
 const log = createLogger("FormFiller");
@@ -73,7 +74,7 @@ class FormFiller {
 
       try {
         await chrome.runtime.sendMessage({
-          action: "saveContextEntry",
+          action: Action.SaveContextEntry,
           data: contextEntry,
         });
       } catch (err) {
